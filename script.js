@@ -54,36 +54,50 @@ document.getElementById('inpVideo').onchange = async (e) => {
     e.target.value = null; 
     
     for(let file of files) {
+        // Create video element
         const vid = document.createElement('video');
         vid.src = URL.createObjectURL(file);
-        vid.muted = true; vid.preload = "auto"; vid.crossOrigin = "anonymous"; 
+        vid.muted = true; 
+        vid.preload = "auto"; 
+        vid.crossOrigin = "anonymous"; 
         vid.setAttribute('playsinline', ''); 
         
         videoPool.appendChild(vid);
         
-        await new Promise(resolve => { 
-            vid.onloadedmetadata = () => resolve(); 
-            vid.onerror = () => resolve();
-            setTimeout(resolve, 1000); 
-        });
-        
-        const dur = (vid.duration && isFinite(vid.duration)) ? vid.duration : 10;
-        
-        const clip = {
-            id: 'c' + Math.random().toString(36).substr(2, 6),
-            type: 'video', 
-            file: file, 
-            videoElement: vid,
-            duration: dur, 
-            sourceDuration: dur,
-            start: 0, offset: 0, opacity: 1, filter: 'none',
-            playbackRate: 1.0 // NEW
-        };
-        
-        const track = appState.tracks[2]; 
-        const lastClip = track.clips[track.clips.length-1];
-        clip.start = lastClip ? lastClip.start + lastClip.duration : 0;
-        track.clips.push(clip);
+        // Robust Metadata Loading
+        try {
+            await new Promise((resolve, reject) => { 
+                vid.onloadedmetadata = () => resolve(); 
+                vid.onerror = () => reject(`Format not supported: ${file.name}`);
+                // Timeout after 3s if browser can't parse it
+                setTimeout(() => {
+                    if(!vid.duration) reject(`Timeout loading: ${file.name}`);
+                }, 3000);
+            });
+            
+            const dur = (vid.duration && isFinite(vid.duration)) ? vid.duration : 10;
+            
+            const clip = {
+                id: 'c' + Math.random().toString(36).substr(2, 6),
+                type: 'video', 
+                file: file, 
+                videoElement: vid,
+                duration: dur, 
+                sourceDuration: dur,
+                start: 0, offset: 0, opacity: 1, filter: 'none',
+                playbackRate: 1.0
+            };
+            
+            // Add to Top Video Track (Index 2)
+            const track = appState.tracks[2]; 
+            const lastClip = track.clips[track.clips.length-1];
+            clip.start = lastClip ? lastClip.start + lastClip.duration : 0;
+            track.clips.push(clip);
+
+        } catch (error) {
+            alert(error); // Warn user about unsupported file
+            videoPool.removeChild(vid); // Cleanup
+        }
     }
     refreshTimeline();
 };
@@ -93,24 +107,30 @@ document.getElementById('inpAudio').onchange = async (e) => {
     e.target.value = null;
     
     for(let file of files) {
-        const arrayBuffer = await file.arrayBuffer();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        
-        const clip = {
-            id: 'c' + Math.random().toString(36).substr(2, 6),
-            type: 'audio', 
-            file: file, 
-            buffer: audioBuffer,
-            duration: audioBuffer.duration, 
-            sourceDuration: audioBuffer.duration,
-            start: 0, offset: 0, volume: 1,
-            playbackRate: 1.0 // NEW
-        };
-        
-        const track = appState.tracks[3];
-        const lastClip = track.clips[track.clips.length-1];
-        clip.start = lastClip ? lastClip.start + lastClip.duration : 0;
-        track.clips.push(clip);
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            // DecodeAudioData is strict; if it fails, the format is bad
+            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            
+            const clip = {
+                id: 'c' + Math.random().toString(36).substr(2, 6),
+                type: 'audio', 
+                file: file, 
+                buffer: audioBuffer,
+                duration: audioBuffer.duration, 
+                sourceDuration: audioBuffer.duration,
+                start: 0, offset: 0, volume: 1,
+                playbackRate: 1.0
+            };
+            
+            const track = appState.tracks[3];
+            const lastClip = track.clips[track.clips.length-1];
+            clip.start = lastClip ? lastClip.start + lastClip.duration : 0;
+            track.clips.push(clip);
+
+        } catch(err) {
+            alert(`Could not decode audio: ${file.name}`);
+        }
     }
     refreshTimeline();
 };
@@ -138,7 +158,6 @@ function createTrackDOM(container, index, label) {
 function refreshTimeline() {
     if(appState.dragging && appState.dragging.action === 'move-marker') return;
 
-    // Calculate Max Width
     let maxClipTime = 0;
     appState.tracks.forEach(t => t.clips.forEach(c => maxClipTime = Math.max(maxClipTime, c.start + c.duration)));
     appState.containerWidth = Math.max(maxClipTime + 10, appState.projectDuration + 10, 60);
@@ -149,7 +168,6 @@ function refreshTimeline() {
 
     endMarker.style.left = (appState.projectDuration * PX_PER_SEC) + 'px';
 
-    // Render Clips
     document.querySelectorAll('.clip').forEach(e => e.remove());
     
     appState.tracks.forEach((track, trackIdx) => {
@@ -163,7 +181,6 @@ function refreshTimeline() {
             el.style.left = (clip.start * PX_PER_SEC) + 'px';
             el.style.width = (clip.duration * PX_PER_SEC) + 'px';
             
-            // Labels
             let speedBadge = clip.playbackRate !== 1 ? `<span style="opacity:0.7">(${clip.playbackRate}x)</span> ` : '';
 
             el.innerHTML = `
@@ -286,21 +303,15 @@ function onPointerMove(e) {
         }
     } 
     else if (d.action === 'trim-l') {
-        // Trim Left: duration shrinks, start moves right, offset increases
         const newDur = d.originalDur - deltaSec;
-        // Check limits. Offset cannot represent more than source available.
-        // Limit logic: d.originalOffset + deltaSec >= 0
         if(newDur > 0.1 && (d.originalOffset + deltaSec * d.clip.playbackRate) >= 0) {
             d.domElement.style.left = ((d.originalStart + deltaSec) * PX_PER_SEC) + 'px';
             d.domElement.style.width = (newDur * PX_PER_SEC) + 'px';
         }
     } 
     else if (d.action === 'trim-r') {
-        // Trim Right: duration grows/shrinks
         const newDur = d.originalDur + deltaSec;
-        // Max Timeline Duration = (SourceDuration - Offset) / PlaybackRate
         const maxDur = (d.clip.sourceDuration - d.clip.offset) / d.clip.playbackRate;
-        
         if(newDur > 0.1 && newDur <= maxDur) {
             d.domElement.style.width = (newDur * PX_PER_SEC) + 'px';
         }
@@ -329,7 +340,6 @@ function onPointerUp(e) {
             const diff = d.originalDur - finalDur;
             d.clip.start = d.originalStart + diff;
             d.clip.duration = finalDur;
-            // Adjust offset based on speed
             d.clip.offset = d.originalOffset + (diff * d.clip.playbackRate);
         } else if (d.action === 'trim-r') {
             d.clip.duration = finalDur;
@@ -397,30 +407,24 @@ function startAudio(outputDestination = null) {
             const clipEnd = clip.start + clip.duration;
             if(clipEnd > appState.currentTime && clip.start < appState.projectDuration) {
                 
-                let startOffset = clip.offset; // Source seconds
+                let startOffset = clip.offset; 
                 let startTime = now;
                 
                 if(clip.start > appState.currentTime) {
                     startTime += (clip.start - appState.currentTime);
                 } else {
-                    // We are playing mid-clip.
-                    // Timeline Time Elapsed = appState.currentTime - clip.start
-                    // Source Time Elapsed = Timeline Time Elapsed * Rate
                     const timelineElapsed = appState.currentTime - clip.start;
                     startOffset += (timelineElapsed * clip.playbackRate);
                 }
                 
-                // Duration Calculation
                 let dur = clip.duration - (startOffset - clip.offset) / clip.playbackRate;
-                
-                // Cut at Project End
                 const remainingProjectTime = appState.projectDuration - Math.max(clip.start, appState.currentTime);
                 dur = Math.min(dur, remainingProjectTime);
 
                 if(dur > 0) {
                     const src = audioCtx.createBufferSource();
                     src.buffer = clip.buffer;
-                    src.playbackRate.value = clip.playbackRate; // SPEED
+                    src.playbackRate.value = clip.playbackRate;
                     
                     const gain = audioCtx.createGain();
                     gain.gain.value = clip.volume;
@@ -451,9 +455,6 @@ function drawPreview() {
         
         if(clip) {
             const vid = clip.videoElement;
-            
-            // Calculate Source Time based on Speed
-            // time = offset + (timeIntoClip * rate)
             const timeIntoClip = appState.currentTime - clip.start;
             const vidTime = clip.offset + (timeIntoClip * clip.playbackRate);
             
@@ -474,7 +475,6 @@ function drawPreview() {
             const w = vid.videoWidth * scale;
             const h = vid.videoHeight * scale;
             ctx.drawImage(vid, (canvas.width-w)/2, (canvas.height-h)/2, w, h);
-            
             ctx.restore();
         }
     }
@@ -495,12 +495,10 @@ function updatePropertiesPanel() {
     document.getElementById('propOpacity').value = c.opacity || 1;
     document.getElementById('propFilter').value = c.filter || 'none';
     
-    // Speed Update
     const speed = c.playbackRate || 1;
     document.getElementById('propSpeed').value = speed;
     document.getElementById('speedVal').innerText = speed + 'x';
     
-    // Hide Opacity for Audio
     if(c.type === 'audio') document.getElementById('propOpacity').parentElement.style.display = 'none';
     else document.getElementById('propOpacity').parentElement.style.display = 'block';
 }
@@ -509,45 +507,29 @@ document.getElementById('propOpacity').oninput = (e) => { if(appState.selectedCl
 document.getElementById('propVolume').oninput = (e) => { if(appState.selectedClip) appState.selectedClip.volume = e.target.value; };
 document.getElementById('propFilter').onchange = (e) => { if(appState.selectedClip) appState.selectedClip.filter = e.target.value; };
 
-// SPEED CHANGE
 document.getElementById('propSpeed').oninput = (e) => {
     if(appState.selectedClip) {
         const newRate = parseFloat(e.target.value);
         const c = appState.selectedClip;
-        
-        // 1. Calculate how much source material is currently being used
         const sourceUsed = c.duration * c.playbackRate;
-        
-        // 2. Update Rate
         c.playbackRate = newRate;
         document.getElementById('speedVal').innerText = newRate + 'x';
-        
-        // 3. Update Timeline Duration to maintain the same source usage
         c.duration = sourceUsed / newRate;
-        
         refreshTimeline();
-        if(appState.isPlaying) startAudio(); // Restart audio engine with new rate
+        if(appState.isPlaying) startAudio();
     }
 };
 
-// DUPLICATE
 document.getElementById('btnDuplicate').onclick = () => {
     if(appState.selectedClip) {
         const c = appState.selectedClip;
         const trackIdx = appState.tracks.findIndex(t => t.clips.includes(c));
         if(trackIdx === -1) return;
         
-        // Clone object
         const clone = { ...c };
         clone.id = 'c' + Math.random().toString(36).substr(2, 6);
-        
-        // Place after original
         clone.start = c.start + c.duration;
-        
-        // Add to track
         appState.tracks[trackIdx].clips.push(clone);
-        
-        // Select the new one
         appState.selectedClip = clone;
         refreshTimeline();
         updatePropertiesPanel();
@@ -565,7 +547,6 @@ document.getElementById('btnDelete').onclick = () => {
     }
 };
 
-// EXPORT
 btnExport.onclick = () => {
     appState.isPlaying = false;
     appState.isExporting = true;
@@ -578,12 +559,7 @@ btnExport.onclick = () => {
     
     const stream = canvas.captureStream(30);
     const dest = audioCtx.createMediaStreamDestination();
-    
-    const combinedStream = new MediaStream([
-        ...stream.getVideoTracks(),
-        ...dest.stream.getAudioTracks()
-    ]);
-    
+    const combinedStream = new MediaStream([ ...stream.getVideoTracks(), ...dest.stream.getAudioTracks() ]);
     const recorder = new MediaRecorder(combinedStream, { mimeType: selectedType, videoBitsPerSecond: 8000000 });
     const chunks = [];
     recorder.ondataavailable = e => { if(e.data.size > 0) chunks.push(e.data); };
@@ -616,7 +592,6 @@ btnExport.onclick = () => {
     }, 100);
 };
 
-// CONTROLS
 document.getElementById('playPause').onclick = () => {
     appState.isPlaying = !appState.isPlaying;
     if(appState.isPlaying) {
