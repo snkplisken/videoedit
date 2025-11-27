@@ -1,0 +1,399 @@
+:root {
+    /* Color Palette */
+    --bg-main: #181818;   /* Deep Dark Background */
+    --bg-sec: #252525;    /* Panels */
+    --accent: #d35400;    /* Final Cut Orange */
+    --marker: #3498db;    /* Blue for End Marker */
+    --text: #ecf0f1;      /* Light Grey Text */
+    --border: #333;       /* Border Color */
+    
+    /* Clip Colors */
+    --clip-vid: #2980b9;  /* Blue Video Clips */
+    --clip-aud: #27ae60;  /* Green Audio Clips */
+}
+
+/* Global Reset */
+body { 
+    margin: 0; 
+    background: var(--bg-main); 
+    color: var(--text); 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+    height: 100vh; 
+    display: flex; 
+    flex-direction: column; 
+    overflow: hidden; 
+    user-select: none; /* Prevents text highlighting while dragging */
+}
+
+/* Main Layout */
+.app { 
+    display: flex; 
+    flex-direction: column; 
+    height: 100%; 
+}
+
+.hidden { 
+    display: none !important; 
+}
+
+/* --- HEADER --- */
+header { 
+    height: 50px; 
+    background: #111; 
+    border-bottom: 1px solid #333; 
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between; 
+    padding: 0 20px; 
+}
+
+.logo { 
+    font-weight: bold; 
+    font-size: 18px; 
+    letter-spacing: 1px; 
+}
+
+.logo span { 
+    color: var(--accent); 
+}
+
+/* --- WORKSPACE (Middle Section) --- */
+.workspace { 
+    display: flex; 
+    height: 55%; 
+    min-height: 300px;
+}
+
+/* Left Sidebar */
+.sidebar { 
+    width: 300px; 
+    background: var(--bg-sec); 
+    border-right: 1px solid #333; 
+    padding: 20px; 
+    box-sizing: border-box; 
+    overflow-y: auto;
+}
+
+.section-title { 
+    font-size: 11px; 
+    text-transform: uppercase; 
+    color: #777; 
+    margin-bottom: 10px; 
+    font-weight: bold; 
+    letter-spacing: 1px; 
+}
+
+/* Import Buttons */
+.import-buttons {
+    margin-bottom: 20px;
+}
+
+.btn-import { 
+    display: block; 
+    background: #333; 
+    padding: 10px; 
+    margin-bottom: 10px; 
+    text-align: center; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    font-size: 13px; 
+    transition: 0.2s; 
+    border: 1px solid #444;
+}
+
+.btn-import:hover { 
+    background: #444; 
+    border-color: #666;
+}
+
+.btn-import input { 
+    display: none; 
+}
+
+/* Properties Panel */
+.properties { 
+    background: #222; 
+    padding: 15px; 
+    border-radius: 6px; 
+    border: 1px solid #444; 
+    margin-top: 10px; 
+}
+
+.prop-row { 
+    margin-bottom: 15px; 
+}
+
+.prop-row label { 
+    display: block; 
+    font-size: 11px; 
+    color: #aaa; 
+    margin-bottom: 5px; 
+}
+
+/* Inputs */
+select, input[type="text"], input[type="number"] { 
+    width: 100%; 
+    background: #111; 
+    border: 1px solid #444; 
+    color: white; 
+    padding: 5px; 
+    box-sizing: border-box; 
+    border-radius: 3px;
+}
+
+input[type="range"] {
+    width: 100%;
+}
+
+/* General Buttons */
+.btn-danger { 
+    width: 100%; 
+    background: #c0392b; 
+    color: white; 
+    border: none; 
+    padding: 8px; 
+    border-radius: 4px; 
+    cursor: pointer; 
+}
+
+.btn-primary { 
+    background: var(--accent); 
+    color: white; 
+    border: none; 
+    padding: 8px 15px; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    font-weight: bold;
+}
+
+.btn-primary:hover {
+    background: #e67e22;
+}
+
+/* --- VIEWER (Right Section) --- */
+.viewer { 
+    flex: 1; 
+    background: #000; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center; 
+    position: relative; 
+}
+
+canvas#previewCanvas { 
+    background: #111; 
+    max-width: 95%; 
+    max-height: 80%; 
+    box-shadow: 0 0 30px rgba(0,0,0,0.5); 
+    border: 1px solid #222;
+}
+
+.transport { 
+    margin-top: 15px; 
+    display: flex; 
+    gap: 15px; 
+    align-items: center; 
+}
+
+.transport button { 
+    background: none; 
+    border: 1px solid #555; 
+    color: #fff; 
+    cursor: pointer; 
+    padding: 5px 10px; 
+    border-radius: 4px; 
+}
+
+.transport button:hover {
+    background: #333;
+}
+
+.transport .btn-big { 
+    font-size: 20px; 
+    width: 40px; 
+    border-color: var(--accent); 
+    color: var(--accent); 
+}
+
+#timecode { 
+    font-family: monospace; 
+    font-size: 14px; 
+    color: #888; 
+}
+
+/* --- TIMELINE AREA (Bottom Section) --- */
+.timeline-area { 
+    height: 45%; 
+    background: #1a1a1a; 
+    display: flex; 
+    flex-direction: column; 
+    border-top: 2px solid #000; 
+    position: relative; 
+}
+
+.ruler-container { 
+    height: 25px; 
+    background: #222; 
+    border-bottom: 1px solid #333; 
+    flex-shrink: 0;
+}
+
+.tracks-scroll { 
+    flex: 1; 
+    overflow: auto; 
+    position: relative; 
+    padding-top: 10px; 
+}
+
+/* Tracks */
+.track { 
+    height: 60px; 
+    border-bottom: 1px solid #2a2a2a; 
+    position: relative; 
+    /* Width set by JS */
+    transition: background 0.1s; 
+}
+
+.track::before { 
+    content: attr(data-label); 
+    position: absolute; 
+    left: 10px; 
+    top: 5px; 
+    font-size: 10px; 
+    color: #555; 
+    pointer-events: none; 
+    z-index: 5; 
+    font-weight: bold;
+}
+
+.track.drag-over { 
+    background: #2c3e50; /* Highlight when dragging clip over track */
+}
+
+/* Clips */
+.clip { 
+    position: absolute; 
+    height: 50px; 
+    top: 5px; 
+    border-radius: 5px; 
+    overflow: hidden; 
+    font-size: 11px; 
+    cursor: grab; 
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.3); 
+    border: 1px solid rgba(0,0,0,0.2); 
+    z-index: 10; 
+}
+
+.clip:active { 
+    cursor: grabbing; 
+    z-index: 20; 
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
+}
+
+.clip.type-video { 
+    background: var(--clip-vid); 
+}
+
+.clip.type-audio { 
+    background: var(--clip-aud); 
+    height: 40px; 
+    top: 10px; 
+}
+
+.clip.selected { 
+    border: 2px solid #fff; 
+    z-index: 100; 
+}
+
+.clip-name { 
+    padding: 4px 8px; 
+    white-space: nowrap; 
+    pointer-events: none; 
+    text-shadow: 0 1px 2px black; 
+    opacity: 0.9; 
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Clip Trim Handles */
+.trim-handle { 
+    position: absolute; 
+    top: 0; 
+    bottom: 0; 
+    width: 15px; 
+    z-index: 15; 
+    cursor: ew-resize; 
+    opacity: 0; 
+    transition: opacity 0.2s; 
+}
+
+.clip:hover .trim-handle { 
+    opacity: 1; 
+    background: rgba(0,0,0,0.3); 
+}
+
+.trim-l { 
+    left: 0; 
+    border-right: 2px solid rgba(255,255,255,0.3); 
+}
+
+.trim-r { 
+    right: 0; 
+    border-left: 2px solid rgba(255,255,255,0.3); 
+}
+
+/* --- MARKERS --- */
+
+/* 1. Playhead (Current Time) */
+#playhead { 
+    position: absolute; 
+    top: 0; 
+    bottom: 0; 
+    left: 0; 
+    width: 1px; 
+    background: #e74c3c; 
+    z-index: 999; 
+    pointer-events: none; 
+    height: 100%; 
+}
+
+#playhead::before { 
+    content:''; 
+    position: absolute; 
+    top: 0; 
+    left: -6px; 
+    border-top: 10px solid #e74c3c; 
+    border-left: 6px solid transparent; 
+    border-right: 6px solid transparent; 
+}
+
+/* 2. End Marker (Project Duration) */
+#endMarker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: transparent;
+    border-left: 2px dashed var(--marker); 
+    z-index: 990; 
+    cursor: ew-resize;
+}
+
+#endMarker::after {
+    content: 'END';
+    position: absolute;
+    top: 0;
+    left: 2px;
+    background: var(--marker);
+    color: white;
+    font-size: 9px;
+    padding: 2px 4px;
+    border-radius: 0 4px 4px 0;
+    font-weight: bold;
+    box-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+#endMarker:hover {
+    border-left: 2px solid var(--marker); /* Solid line on hover */
+}
