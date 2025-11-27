@@ -1,15 +1,15 @@
 :root {
     /* Color Palette */
-    --bg-main: #181818;   /* Deep Dark Background */
-    --bg-sec: #252525;    /* Panels */
-    --accent: #d35400;    /* Final Cut Orange */
-    --marker: #3498db;    /* Blue for End Marker */
-    --text: #ecf0f1;      /* Light Grey Text */
-    --border: #333;       /* Border Color */
+    --bg-main: #181818;
+    --bg-sec: #252525;
+    --accent: #d35400;    /* Orange */
+    --marker: #3498db;    /* Blue */
+    --text: #ecf0f1;
+    --border: #333;
     
     /* Clip Colors */
-    --clip-vid: #2980b9;  /* Blue Video Clips */
-    --clip-aud: #27ae60;  /* Green Audio Clips */
+    --clip-vid: #2980b9;
+    --clip-aud: #27ae60;
 }
 
 /* Global Reset */
@@ -22,19 +22,14 @@ body {
     display: flex; 
     flex-direction: column; 
     overflow: hidden; 
-    user-select: none; /* Prevents text highlighting while dragging */
+    user-select: none; /* Prevents text selection on drag */
+    touch-action: none; /* Prevents mobile browser zooming/scrolling */
+    overscroll-behavior: none; /* Disables pull-to-refresh */
 }
 
-/* Main Layout */
-.app { 
-    display: flex; 
-    flex-direction: column; 
-    height: 100%; 
-}
-
-.hidden { 
-    display: none !important; 
-}
+.app { display: flex; flex-direction: column; height: 100%; }
+.hidden { display: none !important; }
+.mobile-only { display: none; color: #666; font-style: italic; margin-top: 10px; }
 
 /* --- HEADER --- */
 header { 
@@ -44,133 +39,92 @@ header {
     display: flex; 
     align-items: center; 
     justify-content: space-between; 
-    padding: 0 20px; 
+    padding: 0 15px; 
+    flex-shrink: 0; 
 }
 
-.logo { 
-    font-weight: bold; 
-    font-size: 18px; 
-    letter-spacing: 1px; 
-}
+.logo { font-weight: bold; font-size: 16px; letter-spacing: 1px; }
+.logo span { color: var(--accent); }
 
-.logo span { 
-    color: var(--accent); 
-}
-
-/* --- WORKSPACE (Middle Section) --- */
+/* --- WORKSPACE --- */
 .workspace { 
     display: flex; 
     height: 55%; 
-    min-height: 300px;
+    overflow: hidden; 
 }
 
-/* Left Sidebar */
+/* Sidebar */
 .sidebar { 
-    width: 300px; 
+    width: 280px; 
     background: var(--bg-sec); 
     border-right: 1px solid #333; 
-    padding: 20px; 
+    padding: 15px; 
     box-sizing: border-box; 
-    overflow-y: auto;
+    overflow-y: auto; 
 }
 
-.section-title { 
-    font-size: 11px; 
-    text-transform: uppercase; 
-    color: #777; 
-    margin-bottom: 10px; 
-    font-weight: bold; 
-    letter-spacing: 1px; 
-}
+.section-title { font-size: 10px; text-transform: uppercase; color: #777; margin-bottom: 10px; font-weight: bold; }
 
-/* Import Buttons */
-.import-buttons {
-    margin-bottom: 20px;
-}
+.import-buttons { margin-bottom: 20px; }
 
 .btn-import { 
     display: block; 
     background: #333; 
-    padding: 10px; 
-    margin-bottom: 10px; 
+    padding: 12px; 
+    margin-bottom: 8px; 
     text-align: center; 
     border-radius: 4px; 
+    border: 1px solid #444; 
     cursor: pointer; 
     font-size: 13px; 
-    transition: 0.2s; 
-    border: 1px solid #444;
 }
 
-.btn-import:hover { 
-    background: #444; 
-    border-color: #666;
-}
-
-.btn-import input { 
-    display: none; 
-}
+.btn-import input { display: none; }
 
 /* Properties Panel */
 .properties { 
     background: #222; 
-    padding: 15px; 
+    padding: 12px; 
     border-radius: 6px; 
     border: 1px solid #444; 
     margin-top: 10px; 
 }
 
-.prop-row { 
-    margin-bottom: 15px; 
-}
+.prop-row { margin-bottom: 12px; }
+.prop-row label { display: block; font-size: 10px; color: #aaa; margin-bottom: 4px; }
 
-.prop-row label { 
-    display: block; 
-    font-size: 11px; 
-    color: #aaa; 
-    margin-bottom: 5px; 
-}
-
-/* Inputs */
-select, input[type="text"], input[type="number"] { 
+input, select { 
     width: 100%; 
     background: #111; 
     border: 1px solid #444; 
     color: white; 
-    padding: 5px; 
+    padding: 8px; 
     box-sizing: border-box; 
-    border-radius: 3px;
+    border-radius: 4px; 
 }
 
-input[type="range"] {
-    width: 100%;
-}
-
-/* General Buttons */
+/* Buttons */
 .btn-danger { 
     width: 100%; 
     background: #c0392b; 
     color: white; 
     border: none; 
-    padding: 8px; 
+    padding: 10px; 
     border-radius: 4px; 
-    cursor: pointer; 
+    font-weight: bold; 
 }
 
 .btn-primary { 
     background: var(--accent); 
     color: white; 
     border: none; 
-    padding: 8px 15px; 
+    padding: 8px 12px; 
     border-radius: 4px; 
-    cursor: pointer; 
-    font-weight: bold;
+    font-weight: bold; 
+    font-size: 12px; 
 }
 
-.btn-primary:hover {
-    background: #e67e22;
-}
-
-/* --- VIEWER (Right Section) --- */
+/* --- VIEWER --- */
 .viewer { 
     flex: 1; 
     background: #000; 
@@ -185,14 +139,14 @@ canvas#previewCanvas {
     background: #111; 
     max-width: 95%; 
     max-height: 80%; 
-    box-shadow: 0 0 30px rgba(0,0,0,0.5); 
-    border: 1px solid #222;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5); 
+    border: 1px solid #222; 
 }
 
 .transport { 
-    margin-top: 15px; 
+    margin-top: 10px; 
     display: flex; 
-    gap: 15px; 
+    gap: 20px; 
     align-items: center; 
 }
 
@@ -200,43 +154,37 @@ canvas#previewCanvas {
     background: none; 
     border: 1px solid #555; 
     color: #fff; 
-    cursor: pointer; 
-    padding: 5px 10px; 
+    padding: 8px 15px; 
     border-radius: 4px; 
-}
-
-.transport button:hover {
-    background: #333;
+    font-size: 16px; 
+    cursor: pointer; 
 }
 
 .transport .btn-big { 
-    font-size: 20px; 
-    width: 40px; 
+    font-size: 24px; 
     border-color: var(--accent); 
     color: var(--accent); 
+    width: 50px; 
 }
 
-#timecode { 
-    font-family: monospace; 
-    font-size: 14px; 
-    color: #888; 
-}
+#timecode { font-family: monospace; font-size: 12px; color: #888; }
 
-/* --- TIMELINE AREA (Bottom Section) --- */
+/* --- TIMELINE --- */
 .timeline-area { 
-    height: 45%; 
+    flex: 1; 
     background: #1a1a1a; 
     display: flex; 
     flex-direction: column; 
     border-top: 2px solid #000; 
     position: relative; 
+    min-height: 200px;
 }
 
 .ruler-container { 
     height: 25px; 
     background: #222; 
     border-bottom: 1px solid #333; 
-    flex-shrink: 0;
+    flex-shrink: 0; 
 }
 
 .tracks-scroll { 
@@ -244,14 +192,14 @@ canvas#previewCanvas {
     overflow: auto; 
     position: relative; 
     padding-top: 10px; 
+    -webkit-overflow-scrolling: touch; /* Smooth scroll on iOS */
 }
 
-/* Tracks */
+/* Track Lanes */
 .track { 
     height: 60px; 
     border-bottom: 1px solid #2a2a2a; 
     position: relative; 
-    /* Width set by JS */
     transition: background 0.1s; 
 }
 
@@ -260,16 +208,14 @@ canvas#previewCanvas {
     position: absolute; 
     left: 10px; 
     top: 5px; 
-    font-size: 10px; 
+    font-size: 9px; 
     color: #555; 
     pointer-events: none; 
     z-index: 5; 
-    font-weight: bold;
+    font-weight: bold; 
 }
 
-.track.drag-over { 
-    background: #2c3e50; /* Highlight when dragging clip over track */
-}
+.track.drag-over { background: #2c3e50; }
 
 /* Clips */
 .clip { 
@@ -283,28 +229,12 @@ canvas#previewCanvas {
     box-shadow: 2px 2px 5px rgba(0,0,0,0.3); 
     border: 1px solid rgba(0,0,0,0.2); 
     z-index: 10; 
+    touch-action: none; /* Critical for JS Dragging */
 }
 
-.clip:active { 
-    cursor: grabbing; 
-    z-index: 20; 
-    box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
-}
-
-.clip.type-video { 
-    background: var(--clip-vid); 
-}
-
-.clip.type-audio { 
-    background: var(--clip-aud); 
-    height: 40px; 
-    top: 10px; 
-}
-
-.clip.selected { 
-    border: 2px solid #fff; 
-    z-index: 100; 
-}
+.clip.type-video { background: var(--clip-vid); }
+.clip.type-audio { background: var(--clip-aud); height: 40px; top: 10px; }
+.clip.selected { border: 2px solid #fff; z-index: 100; }
 
 .clip-name { 
     padding: 4px 8px; 
@@ -312,88 +242,126 @@ canvas#previewCanvas {
     pointer-events: none; 
     text-shadow: 0 1px 2px black; 
     opacity: 0.9; 
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-/* Clip Trim Handles */
+/* Trim Handles (Large for Mobile) */
 .trim-handle { 
     position: absolute; 
     top: 0; 
     bottom: 0; 
-    width: 15px; 
+    width: 25px; /* Wide hit area */
     z-index: 15; 
     cursor: ew-resize; 
     opacity: 0; 
     transition: opacity 0.2s; 
 }
 
-.clip:hover .trim-handle { 
+/* Show handles when selected or hovered */
+.clip.selected .trim-handle, .clip:hover .trim-handle { 
     opacity: 1; 
-    background: rgba(0,0,0,0.3); 
+    background: rgba(0,0,0,0.2); 
 }
 
-.trim-l { 
-    left: 0; 
-    border-right: 2px solid rgba(255,255,255,0.3); 
-}
-
-.trim-r { 
-    right: 0; 
-    border-left: 2px solid rgba(255,255,255,0.3); 
-}
+.trim-l { left: 0; border-right: 2px solid rgba(255,255,255,0.5); }
+.trim-r { right: 0; border-left: 2px solid rgba(255,255,255,0.5); }
 
 /* --- MARKERS --- */
 
-/* 1. Playhead (Current Time) */
+/* Playhead */
 #playhead { 
     position: absolute; 
     top: 0; 
     bottom: 0; 
     left: 0; 
-    width: 1px; 
+    width: 2px; 
     background: #e74c3c; 
     z-index: 999; 
     pointer-events: none; 
     height: 100%; 
 }
-
 #playhead::before { 
     content:''; 
     position: absolute; 
     top: 0; 
-    left: -6px; 
-    border-top: 10px solid #e74c3c; 
-    border-left: 6px solid transparent; 
-    border-right: 6px solid transparent; 
+    left: -9px; 
+    border-top: 15px solid #e74c3c; 
+    border-left: 10px solid transparent; 
+    border-right: 10px solid transparent; 
 }
 
-/* 2. End Marker (Project Duration) */
+/* End Marker */
 #endMarker {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: transparent;
+    position: absolute; 
+    top: 0; 
+    bottom: 0; 
+    width: 15px; /* Easy to grab */
+    background: transparent; 
     border-left: 2px dashed var(--marker); 
     z-index: 990; 
     cursor: ew-resize;
+    touch-action: none;
 }
-
 #endMarker::after {
-    content: 'END';
-    position: absolute;
-    top: 0;
-    left: 2px;
-    background: var(--marker);
-    color: white;
-    font-size: 9px;
-    padding: 2px 4px;
-    border-radius: 0 4px 4px 0;
-    font-weight: bold;
-    box-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    content: 'END'; 
+    position: absolute; 
+    top: 0; 
+    left: 4px; 
+    background: var(--marker); 
+    color: white; 
+    font-size: 10px; 
+    padding: 4px 6px; 
+    border-radius: 0 4px 4px 0; 
+    font-weight: bold; 
 }
 
-#endMarker:hover {
-    border-left: 2px solid var(--marker); /* Solid line on hover */
+/* --- MOBILE RESPONSIVE --- */
+@media (max-width: 768px) {
+    .workspace { 
+        flex-direction: column; 
+        height: auto; 
+    }
+    
+    .sidebar { 
+        width: 100%; 
+        height: auto; 
+        max-height: 160px; /* Collapsible area */
+        order: 2; /* Move below viewer */
+        border-right: none;
+        border-top: 1px solid #333;
+        display: flex;
+        flex-wrap: wrap;
+        padding: 10px;
+    }
+    
+    .section-title { width: 100%; margin-bottom: 5px;}
+    
+    .import-buttons { 
+        display: flex; 
+        gap: 10px; 
+        width: 100%; 
+        margin-bottom: 10px;
+    }
+    .btn-import { flex: 1; margin: 0; }
+    
+    .properties { 
+        width: 100%; 
+        display: flex; 
+        flex-wrap: wrap; 
+        gap: 10px;
+        margin-top: 0;
+    }
+    
+    .prop-row { flex: 1; min-width: 100px; margin: 0; }
+    
+    .viewer { 
+        height: 280px; /* Fixed height for video player on phone */
+        order: 1; 
+        flex: none; 
+    }
+    
+    .timeline-area {
+        min-height: 350px; /* Ensure space for finger dragging */
+    }
+    
+    .mobile-only { display: block; width: 100%; text-align: center; }
 }

@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web FCP Editor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ultimate Web Editor</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,30 +15,73 @@
         <button id="btnExport" class="btn-primary">Export Project</button>
     </header>
 
-    <!-- MIDDLE: BINS & PREVIEW -->
+    <!-- MIDDLE: WORKSPACE -->
     <div class="workspace">
+        
+        <!-- SIDEBAR -->
         <div class="sidebar">
             <div class="section-title">Media Import</div>
             <div class="import-buttons">
-                <label class="btn-import">+ Video (MP4)<input type="file" id="inpVideo" accept="video/mp4,video/webm" multiple></label>
-                <label class="btn-import">+ Audio (MP3)<input type="file" id="inpAudio" accept="audio/*" multiple></label>
+                <label class="btn-import">
+                    + Add Video
+                    <!-- UPDATED: Accepts MOV, MKV, AVI, etc. -->
+                    <input type="file" id="inpVideo" accept="video/*, .mov, .mkv, .mp4, .webm" multiple>
+                </label>
+                <label class="btn-import">
+                    + Add Audio
+                    <input type="file" id="inpAudio" accept="audio/*, .mp3, .wav, .m4a, .aac" multiple>
+                </label>
             </div>
 
+            <!-- PROPERTIES PANEL -->
             <div id="propertiesPanel" class="properties hidden">
                 <div class="section-title">Clip Inspector</div>
-                <div class="prop-row"><label>Filter</label><select id="propFilter"><option value="none">Normal</option><option value="bw">B/W Noir</option><option value="35mm">35mm Film</option><option value="invert">Invert</option><option value="vhs">VHS Fuzz</option></select></div>
-                <div class="prop-row"><label>Opacity</label><input type="range" id="propOpacity" min="0" max="1" step="0.01"></div>
-                <div class="prop-row"><label>Volume</label><input type="range" id="propVolume" min="0" max="1.5" step="0.1"></div>
-                <div class="prop-row"><button id="btnDelete" class="btn-danger">Delete Clip</button></div>
+                
+                <div class="prop-row">
+                    <label>Filter</label>
+                    <select id="propFilter">
+                        <option value="none">Normal</option>
+                        <option value="bw">B/W Noir</option>
+                        <option value="35mm">35mm Film</option>
+                        <option value="invert">Invert</option>
+                        <option value="vhs">VHS Fuzz</option>
+                    </select>
+                </div>
+                
+                <div class="prop-row">
+                    <label>Speed: <span id="speedVal">1.0x</span></label>
+                    <input type="range" id="propSpeed" min="0.5" max="3.0" step="0.25" value="1">
+                </div>
+
+                <div class="prop-row">
+                    <label>Opacity</label>
+                    <input type="range" id="propOpacity" min="0" max="1" step="0.01">
+                </div>
+                
+                <div class="prop-row">
+                    <label>Volume</label>
+                    <input type="range" id="propVolume" min="0" max="1.5" step="0.1">
+                </div>
+
+                <div class="prop-row" style="display:flex; gap:10px;">
+                    <button id="btnDuplicate" class="btn-primary" style="background:#2980b9; flex:1;">Duplicate</button>
+                    <button id="btnDelete" class="btn-danger" style="flex:1;">Delete</button>
+                </div>
+            </div>
+            
+            <div class="instructions mobile-only">
+                <small>Tip: Use two fingers to scroll the timeline.</small>
             </div>
         </div>
 
+        <!-- VIEWER -->
         <div class="viewer">
             <canvas id="previewCanvas" width="854" height="480"></canvas>
+            
             <div class="transport">
-                <button id="toStart">|&lt;</button>
-                <button id="playPause" class="btn-big">▶</button>
-                <span id="timecode">00:00:00</span>
+                <button id="toStart" title="Go to Start">|&lt;</button>
+                <button id="playPause" class="btn-big" title="Play/Pause">▶</button>
+                <span id="timecode">00:00.0</span>
             </div>
         </div>
     </div>
@@ -49,12 +92,8 @@
             <canvas id="rulerCanvas"></canvas>
         </div>
         <div class="tracks-scroll" id="timelineScroll">
-            <!-- PLAYHEAD -->
             <div id="playhead"></div>
-            
-            <!-- NEW: END MARKER -->
-            <div id="endMarker" title="Drag to set project end time"></div>
-
+            <div id="endMarker" title="Drag to set End Time"></div>
             <div id="tracksContainer"></div>
         </div>
     </div>
