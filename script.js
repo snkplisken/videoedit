@@ -15,13 +15,15 @@ const btnExport = document.getElementById('btnExport'); // Reference for UI upda
 // --- STATE ---
 const appState = {
     currentTime: 0,
-    projectDuration: 30, 
-    containerWidth: 60, 
+    projectDuration: 30,
+    containerWidth: 60,
+    resolution: { width: canvas.width, height: canvas.height },
     isPlaying: false,
     isExporting: false, // NEW: Track export state
     selectedClip: null,
-    tracks: [], 
-    dragging: null
+    tracks: [],
+    dragging: null,
+    lastFrameTime: null
 };
 
 // --- AUDIO ENGINE ---
@@ -35,7 +37,8 @@ function init() {
     for(let i=0; i<TRACK_COUNT_AUDIO; i++) appState.tracks.push({ type: 'audio', clips: [] });
 
     renderTimelineTracks();
-    refreshTimeline(); 
+    refreshTimeline();
+    initResolutionControls();
     loop();
 }
 
@@ -258,12 +261,19 @@ function onMouseUp(e) {
 }
 
 // --- PLAYBACK ENGINE ---
-function loop() {
+function loop(timestamp) {
+    const now = timestamp || performance.now();
+    if(appState.lastFrameTime === null) {
+        appState.lastFrameTime = now;
+    }
+    const deltaSec = (now - appState.lastFrameTime) / 1000;
+    appState.lastFrameTime = now;
+
     if(appState.isPlaying) {
-        // Render Audio chunks are handled by WebAudio scheduler, 
+        // Render Audio chunks are handled by WebAudio scheduler,
         // we just update UI time here.
-        appState.currentTime += 0.033; // ~30FPS
-        
+        appState.currentTime += deltaSec;
+
         if(appState.currentTime >= appState.projectDuration) {
             // STOP at End
             if(appState.isExporting) {
@@ -342,6 +352,7 @@ document.getElementById('playPause').onclick = () => {
     appState.isPlaying = !appState.isPlaying;
     if(appState.isPlaying) {
         document.getElementById('playPause').innerText = "❚❚";
+        appState.lastFrameTime = null;
         startAudio();
     } else {
         document.getElementById('playPause').innerText = "▶";
@@ -352,6 +363,7 @@ document.getElementById('playPause').onclick = () => {
 document.getElementById('toStart').onclick = () => {
     appState.isPlaying = false;
     appState.currentTime = 0;
+    appState.lastFrameTime = null;
     stopAudio();
     document.getElementById('playPause').innerText = "▶";
     drawPreview();
@@ -362,10 +374,61 @@ document.getElementById('timelineScroll').addEventListener('mousedown', (e) => {
     if(e.target.className === 'tracks-scroll' || e.target.className === 'track') {
         const r = document.getElementById('tracksContainer').getBoundingClientRect();
         appState.currentTime = Math.max(0, (e.clientX - r.left) / PX_PER_SEC);
+        appState.lastFrameTime = null;
         if(appState.isPlaying) startAudio();
         drawPreview();
     }
 });
+
+// --- PROJECT SETTINGS ---
+function initResolutionControls() {
+    const presetSelect = document.getElementById('resolutionPreset');
+    const widthInput = document.getElementById('resolutionWidth');
+    const heightInput = document.getElementById('resolutionHeight');
+    const applyBtn = document.getElementById('applyResolution');
+
+    const presets = {
+        "480p": { width: 854, height: 480 },
+        "720p": { width: 1280, height: 720 },
+        "1080p": { width: 1920, height: 1080 },
+        "4k": { width: 3840, height: 2160 },
+        "square": { width: 1080, height: 1080 }
+    };
+
+    const setInputs = ({ width, height }) => {
+        widthInput.value = Math.round(width);
+        heightInput.value = Math.round(height);
+    };
+
+    const syncPresetSelection = () => {
+        const match = Object.entries(presets).find(([, size]) =>
+            size.width === appState.resolution.width && size.height === appState.resolution.height
+        );
+        presetSelect.value = match ? match[0] : 'custom';
+    };
+
+    presetSelect.addEventListener('change', () => {
+        const chosen = presets[presetSelect.value];
+        if(chosen) setInputs(chosen);
+    });
+
+    applyBtn.addEventListener('click', () => {
+        const width = Math.max(320, parseInt(widthInput.value, 10) || appState.resolution.width);
+        const height = Math.max(240, parseInt(heightInput.value, 10) || appState.resolution.height);
+        applyResolution(width, height);
+        syncPresetSelection();
+    });
+
+    syncPresetSelection();
+    setInputs(appState.resolution);
+}
+
+function applyResolution(width, height) {
+    appState.resolution = { width, height };
+    canvas.width = width;
+    canvas.height = height;
+    drawPreview();
+}
 
 // --- RENDER VISUALS ---
 function drawPreview() {
@@ -437,6 +500,7 @@ btnExport.onclick = () => {
     appState.isExporting = true;
     stopAudio();
     appState.currentTime = 0;
+    appState.lastFrameTime = null;
     
     // 2. Select Supported Mime Type
     const types = [

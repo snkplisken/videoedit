@@ -24,6 +24,34 @@
                 <label class="btn-import">+ Audio (MP3)<input type="file" id="inpAudio" accept="audio/*" multiple></label>
             </div>
 
+            <div class="properties">
+                <div class="section-title">Project Settings</div>
+                <div class="prop-row">
+                    <label>Resolution Preset</label>
+                    <select id="resolutionPreset">
+                        <option value="720p">HD 720p (1280x720)</option>
+                        <option value="1080p">Full HD (1920x1080)</option>
+                        <option value="4k">4K UHD (3840x2160)</option>
+                        <option value="480p">SD (854x480)</option>
+                        <option value="square">Square (1080x1080)</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+                <div class="prop-row dual-input">
+                    <div class="input-group">
+                        <label>Width</label>
+                        <input type="number" id="resolutionWidth" min="320" step="10">
+                    </div>
+                    <div class="input-group">
+                        <label>Height</label>
+                        <input type="number" id="resolutionHeight" min="240" step="10">
+                    </div>
+                </div>
+                <div class="prop-row">
+                    <button id="applyResolution" class="btn-primary full">Apply</button>
+                </div>
+            </div>
+
             <div id="propertiesPanel" class="properties hidden">
                 <div class="section-title">Clip Inspector</div>
                 <div class="prop-row"><label>Filter</label><select id="propFilter"><option value="none">Normal</option><option value="bw">B/W Noir</option><option value="35mm">35mm Film</option><option value="invert">Invert</option><option value="vhs">VHS Fuzz</option></select></div>

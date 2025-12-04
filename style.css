@@ -123,11 +123,20 @@ header {
     margin-bottom: 15px; 
 }
 
-.prop-row label { 
-    display: block; 
-    font-size: 11px; 
-    color: #aaa; 
-    margin-bottom: 5px; 
+.prop-row label {
+    display: block;
+    font-size: 11px;
+    color: #aaa;
+    margin-bottom: 5px;
+}
+
+.dual-input {
+    display: flex;
+    gap: 10px;
+}
+
+.dual-input .input-group {
+    flex: 1;
 }
 
 /* Inputs */
@@ -156,18 +165,23 @@ input[type="range"] {
     cursor: pointer; 
 }
 
-.btn-primary { 
-    background: var(--accent); 
-    color: white; 
-    border: none; 
-    padding: 8px 15px; 
-    border-radius: 4px; 
-    cursor: pointer; 
+.btn-primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
     font-weight: bold;
 }
 
 .btn-primary:hover {
     background: #e67e22;
+}
+
+.btn-primary.full {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* --- VIEWER (Right Section) --- */
