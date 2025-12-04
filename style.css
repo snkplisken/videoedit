@@ -13,15 +13,15 @@
 }
 
 /* Global Reset */
-body { 
-    margin: 0; 
-    background: var(--bg-main); 
-    color: var(--text); 
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-    height: 100vh; 
-    display: flex; 
-    flex-direction: column; 
-    overflow: hidden; 
+body {
+    margin: 0;
+    background: var(--bg-main);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     user-select: none; /* Prevents text highlighting while dragging */
 }
 
@@ -58,15 +58,15 @@ header {
 }
 
 /* --- WORKSPACE (Middle Section) --- */
-.workspace { 
-    display: flex; 
-    height: 55%; 
+.workspace {
+    display: flex;
+    height: 55%;
     min-height: 300px;
 }
 
 /* Left Sidebar */
-.sidebar { 
-    width: 300px; 
+.sidebar {
+    width: 300px;
     background: var(--bg-sec); 
     border-right: 1px solid #333; 
     padding: 20px; 
@@ -223,11 +223,11 @@ canvas#previewCanvas {
     background: #333;
 }
 
-.transport .btn-big { 
-    font-size: 20px; 
-    width: 40px; 
-    border-color: var(--accent); 
-    color: var(--accent); 
+.transport .btn-big {
+    font-size: 20px;
+    width: 40px;
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 #timecode { 
@@ -410,4 +410,66 @@ canvas#previewCanvas {
 
 #endMarker:hover {
     border-left: 2px solid var(--marker); /* Solid line on hover */
+}
+
+/* --- MOBILE OPTIMIZATIONS --- */
+@media (max-width: 900px) {
+    body {
+        overflow: auto;
+        height: auto;
+    }
+
+    header {
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        text-align: center;
+    }
+
+    header .btn-primary {
+        width: 100%;
+        max-width: 320px;
+    }
+
+    .workspace {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #333;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+    }
+
+    .properties,
+    .import-buttons,
+    .section-title {
+        grid-column: 1 / -1;
+    }
+
+    .viewer {
+        padding: 10px 0;
+    }
+
+    .transport {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .timeline-area {
+        height: auto;
+        max-height: 55vh;
+    }
+
+    .tracks-scroll {
+        min-height: 200px;
+    }
+
+    .track {
+        height: 70px;
+    }
 }

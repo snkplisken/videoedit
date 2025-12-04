@@ -25,6 +25,13 @@ const endMarker = document.getElementById('endMarker');
 const btnExport = document.getElementById('btnExport');
 const videoSupportProbe = document.createElement('video');
 
+// Normalize mouse/touch coordinates for mobile support
+const getClientX = (e) => {
+    if(e.touches && e.touches.length) return e.touches[0].clientX;
+    if(e.changedTouches && e.changedTouches.length) return e.changedTouches[0].clientX;
+    return e.clientX;
+};
+
 // --- STATE ---
 const appState = {
     currentTime: 0,
@@ -195,6 +202,7 @@ function refreshTimeline() {
             `;
             
             el.onmousedown = (e) => handleClipMouseDown(e, clip, trackIdx, el);
+            el.ontouchstart = (e) => handleClipMouseDown(e, clip, trackIdx, el);
             trackDiv.appendChild(el);
         });
     });
@@ -222,35 +230,56 @@ function updateRuler() {
 }
 
 // --- INTERACTION ---
-endMarker.onmousedown = (e) => {
-    e.stopPropagation(); 
-    appState.dragging = { action: 'move-marker', startX: e.clientX, originalTime: appState.projectDuration };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+const addDragListeners = () => {
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+    window.addEventListener('touchmove', onPointerMove, { passive: false });
+    window.addEventListener('touchend', onPointerUp);
 };
+
+const removeDragListeners = () => {
+    window.removeEventListener('mousemove', onPointerMove);
+    window.removeEventListener('mouseup', onPointerUp);
+    window.removeEventListener('touchmove', onPointerMove);
+    window.removeEventListener('touchend', onPointerUp);
+};
+
+const startMarkerDrag = (e) => {
+    e.stopPropagation();
+    if(e.cancelable) e.preventDefault();
+    const clientX = getClientX(e);
+    appState.dragging = { action: 'move-marker', startX: clientX, originalTime: appState.projectDuration };
+    addDragListeners();
+};
+
+endMarker.addEventListener('mousedown', startMarkerDrag);
+endMarker.addEventListener('touchstart', startMarkerDrag, { passive: false });
 
 function handleClipMouseDown(e, clip, trackIdx, el) {
     e.stopPropagation();
+    if(e.cancelable) e.preventDefault();
     appState.selectedClip = clip;
     updatePropertiesPanel();
     document.querySelectorAll('.clip').forEach(c => c.classList.remove('selected'));
     el.classList.add('selected');
-    
+
+    const clientX = getClientX(e);
+
     appState.dragging = {
         clip: clip, domElement: el,
         startTrackIdx: trackIdx, currentTrackIdx: trackIdx,
         action: e.target.dataset.action || 'move',
-        startX: e.clientX,
+        startX: clientX,
         originalStart: clip.start, originalDur: clip.duration, originalOffset: clip.offset
     };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    addDragListeners();
 }
 
-function onMouseMove(e) {
+function onPointerMove(e) {
     if(!appState.dragging) return;
+    if(e.cancelable) e.preventDefault();
     const d = appState.dragging;
-    const deltaPx = e.clientX - d.startX;
+    const deltaPx = getClientX(e) - d.startX;
     const deltaSec = deltaPx / PX_PER_SEC;
 
     if(d.action === 'move-marker') {
@@ -264,7 +293,7 @@ function onMouseMove(e) {
         d.domElement.style.left = (newStart * PX_PER_SEC) + 'px';
         
         // Handle track jumping
-        const hoveredEl = document.elementFromPoint(e.clientX, e.clientY);
+            const hoveredEl = document.elementFromPoint(getClientX(e), e.clientY || (e.touches && e.touches[0].clientY));
         const trackDiv = hoveredEl ? hoveredEl.closest('.track') : null;
         if(trackDiv) {
             const trackType = trackDiv.dataset.type;
@@ -290,12 +319,12 @@ function onMouseMove(e) {
     }
 }
 
-function onMouseUp(e) {
+function onPointerUp(e) {
     if(!appState.dragging) return;
     const d = appState.dragging;
 
     if(d.action !== 'move-marker') {
-        const deltaPx = e.clientX - d.startX;
+        const deltaPx = getClientX(e) - d.startX;
         const deltaSec = deltaPx / PX_PER_SEC;
         
         if(d.action === 'move') {
@@ -322,8 +351,7 @@ function onMouseUp(e) {
     }
 
     appState.dragging = null;
-    window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup', onMouseUp);
+    removeDragListeners();
     refreshTimeline();
     drawPreview(true); // Force seek update
 }
@@ -443,20 +471,24 @@ document.getElementById('toStart').onclick = () => {
     drawPreview(true); // Force seek
 };
 
-document.getElementById('timelineScroll').addEventListener('mousedown', (e) => {
+const handleTimelineSeek = (e) => {
     if(e.target.id === 'endMarker') return;
+    if(e.cancelable) e.preventDefault();
     if(e.target.className === 'tracks-scroll' || e.target.className === 'track') {
         const r = document.getElementById('tracksContainer').getBoundingClientRect();
-        const clickedTime = Math.max(0, (e.clientX - r.left) / PX_PER_SEC);
-        
+        const clickedTime = Math.max(0, (getClientX(e) - r.left) / PX_PER_SEC);
+
         appState.currentTime = clickedTime;
-        
+
         if(appState.isPlaying) {
             startPlayback(); // Resync audio
         }
         drawPreview(true); // Force seek
     }
-});
+};
+
+document.getElementById('timelineScroll').addEventListener('mousedown', handleTimelineSeek);
+document.getElementById('timelineScroll').addEventListener('touchstart', handleTimelineSeek, { passive: false });
 
 // --- RENDER VISUALS ---
 function drawPreview(forceSeek = false) {
