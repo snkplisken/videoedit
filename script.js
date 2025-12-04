@@ -24,9 +24,14 @@ const rulerCanvas = document.getElementById('rulerCanvas');
 const rulerCtx = rulerCanvas.getContext('2d');
 const videoPool = document.getElementById('video-pool');
 const endMarker = document.getElementById('endMarker');
+const startMarker = document.getElementById('startMarker');
 const btnExport = document.getElementById('btnExport');
 const videoSupportProbe = document.createElement('video');
 const timelineScroll = document.getElementById('timelineScroll');
+const projectStartInput = document.getElementById('projectStartInput');
+const projectEndInput = document.getElementById('projectEndInput');
+const projectStartRange = document.getElementById('projectStartRange');
+const projectEndRange = document.getElementById('projectEndRange');
 
 // Normalize mouse/touch coordinates for mobile support
 const getClientX = (e) => {
@@ -40,9 +45,32 @@ const snapTime = (time) => {
     return Math.round(time / appState.snapGridSize) * appState.snapGridSize;
 };
 
+const getMaxClipTime = () => {
+    let maxClipTime = 0;
+    appState.tracks.forEach(t => t.clips.forEach(c => maxClipTime = Math.max(maxClipTime, c.start + c.duration)));
+    return maxClipTime;
+};
+
+const updateProjectRangeInputs = (maxDurationOverride = null) => {
+    const extent = maxDurationOverride !== null ? maxDurationOverride : Math.max(appState.projectDuration, getMaxClipTime());
+    const safeEnd = Math.max(appState.projectDuration, appState.projectStart + 0.1);
+    projectStartInput.value = appState.projectStart.toFixed(1);
+    projectEndInput.value = safeEnd.toFixed(1);
+    projectStartRange.max = Math.max(0.1, safeEnd - 0.1);
+    projectEndRange.max = Math.max(extent + 1, safeEnd);
+    projectStartRange.value = appState.projectStart;
+    projectEndRange.value = safeEnd;
+};
+
+const clampCurrentTimeWithinRange = () => {
+    if(appState.currentTime < appState.projectStart) appState.currentTime = appState.projectStart;
+    if(appState.currentTime > appState.projectDuration) appState.currentTime = appState.projectDuration;
+};
+
 // --- STATE ---
 const appState = {
     currentTime: 0,
+    projectStart: 0,
     projectDuration: 30,
     containerWidth: 60,
     pxPerSec: PX_PER_SEC_DEFAULT,
@@ -185,14 +213,17 @@ function createTrackDiv(container, index, label) {
 }
 
 function refreshTimeline() {
-    if(appState.dragging && appState.dragging.action !== 'move-marker') return;
+    if(appState.dragging && appState.dragging.action !== 'move-marker' && appState.dragging.action !== 'move-start-marker') return;
+
+    if(appState.projectDuration <= appState.projectStart) {
+        appState.projectDuration = appState.projectStart + 0.1;
+    }
 
     // Calculate container width based on content
     let maxClipTime = 0;
     appState.tracks.forEach(t => t.clips.forEach(c => maxClipTime = Math.max(maxClipTime, c.start + c.duration)));
 
     const contentDuration = Math.max(appState.projectDuration, maxClipTime);
-    if(contentDuration > appState.projectDuration) appState.projectDuration = contentDuration;
 
     const shouldAutoZoom = !appState.userAdjustedZoom && !appState.autoZooming && !appState.skipNextAutoZoom && !(appState.dragging && appState.dragging.action === 'move-marker');
     if(shouldAutoZoom) {
@@ -213,6 +244,7 @@ function refreshTimeline() {
     updateRuler();
 
     endMarker.style.left = (appState.projectDuration * appState.pxPerSec) + 'px';
+    startMarker.style.left = (appState.projectStart * appState.pxPerSec) + 'px';
 
     if(appState.dragging && appState.dragging.action === 'move-marker') return;
 
@@ -241,6 +273,7 @@ function refreshTimeline() {
     });
 
     syncRulerToScroll();
+    updateProjectRangeInputs(contentDuration);
 }
 
 function setTimelineZoom(value, anchorTime = appState.currentTime) {
@@ -318,6 +351,17 @@ const startMarkerDrag = (e) => {
 endMarker.addEventListener('mousedown', startMarkerDrag);
 endMarker.addEventListener('touchstart', startMarkerDrag, { passive: false });
 
+const startRangeDrag = (e) => {
+    e.stopPropagation();
+    if(e.cancelable) e.preventDefault();
+    const clientX = getClientX(e);
+    appState.dragging = { action: 'move-start-marker', startX: clientX, originalTime: appState.projectStart };
+    addDragListeners();
+};
+
+startMarker.addEventListener('mousedown', startRangeDrag);
+startMarker.addEventListener('touchstart', startRangeDrag, { passive: false });
+
 function handleClipMouseDown(e, clip, trackIdx, el) {
     e.stopPropagation();
     if(e.cancelable) e.preventDefault();
@@ -346,8 +390,21 @@ function onPointerMove(e) {
     const deltaSec = deltaPx / appState.pxPerSec;
 
     if(d.action === 'move-marker') {
-        appState.projectDuration = Math.max(1, d.originalTime + deltaSec);
-        refreshTimeline(); 
+        const maxClipTime = getMaxClipTime();
+        appState.projectDuration = Math.max(appState.projectStart + 0.1, d.originalTime + deltaSec);
+        refreshTimeline();
+        updateProjectRangeInputs(Math.max(appState.projectDuration, maxClipTime));
+        return;
+    }
+
+    if(d.action === 'move-start-marker') {
+        const maxClipTime = appState.tracks.reduce((m, t) => Math.max(m, ...t.clips.map(c => c.start + c.duration)), 0);
+        const contentDuration = Math.max(appState.projectDuration, maxClipTime);
+        let newStart = Math.max(0, d.originalTime + deltaSec);
+        newStart = Math.min(newStart, appState.projectDuration - 0.1);
+        appState.projectStart = newStart;
+        startMarker.style.left = (appState.projectStart * appState.pxPerSec) + 'px';
+        updateProjectRangeInputs(contentDuration);
         return;
     }
 
@@ -391,7 +448,7 @@ function onPointerUp(e) {
     if(!appState.dragging) return;
     const d = appState.dragging;
 
-    if(d.action !== 'move-marker') {
+    if(d.action !== 'move-marker' && d.action !== 'move-start-marker') {
         const deltaPx = getClientX(e) - d.startX;
         const deltaSec = deltaPx / appState.pxPerSec;
 
@@ -422,6 +479,14 @@ function onPointerUp(e) {
         document.querySelectorAll('.track').forEach(t => t.classList.remove('drag-over'));
     }
 
+    if(d.action === 'move-start-marker') {
+        const deltaPx = getClientX(e) - d.startX;
+        const deltaSec = deltaPx / appState.pxPerSec;
+        let newStart = Math.max(0, d.originalTime + deltaSec);
+        newStart = Math.min(newStart, appState.projectDuration - 0.1);
+        appState.projectStart = newStart;
+    }
+
     appState.dragging = null;
     removeDragListeners();
     refreshTimeline();
@@ -441,7 +506,7 @@ function loop() {
                 // Let export logic handle stop
             } else {
                 pausePlayback();
-                appState.currentTime = 0; // Reset to start
+                appState.currentTime = appState.projectStart; // Reset to start range
             }
         }
         
@@ -525,7 +590,11 @@ function scheduleAudioPlayback(clip, finalDest, startTime, startOffset, dur) {
 
 function startPlayback(outputDestination = null) {
     if(audioCtx.state === 'suspended') audioCtx.resume();
-    
+
+    clampCurrentTimeWithinRange();
+    const playbackAnchor = Math.max(appState.currentTime, appState.projectStart);
+    appState.currentTime = playbackAnchor;
+
     // Set sync anchor
     appState.playbackStartTime = audioCtx.currentTime;
     appState.playbackStartOffset = appState.currentTime;
@@ -539,21 +608,21 @@ function startPlayback(outputDestination = null) {
             const clipEnd = clip.start + clip.duration;
             
             // Only schedule if it hasn't finished yet
-            if(clipEnd > appState.currentTime && clip.start < appState.projectDuration) {
+            if(clipEnd > appState.projectStart && clip.start < appState.projectDuration) {
 
                 let startOffset = clip.offset;
                 let startTime = appState.playbackStartTime;
-                
+
                 // Calculate relative start times
-                if(clip.start > appState.currentTime) {
-                    startTime += (clip.start - appState.currentTime);
+                if(clip.start > playbackAnchor) {
+                    startTime += (clip.start - playbackAnchor);
                 } else {
-                    startOffset += (appState.currentTime - clip.start);
+                    startOffset += (playbackAnchor - clip.start);
                 }
-                
+
                 // Duration remaining
                 let dur = clip.duration - (startOffset - clip.offset);
-                const timeUntilProjectEnd = appState.projectDuration - Math.max(clip.start, appState.currentTime);
+                const timeUntilProjectEnd = appState.projectDuration - Math.max(clip.start, playbackAnchor);
                 dur = Math.min(dur, timeUntilProjectEnd);
 
                 if(dur > 0) scheduleAudioPlayback(clip, finalDest, startTime, startOffset, dur);
@@ -583,12 +652,12 @@ document.getElementById('playPause').onclick = () => {
 
 document.getElementById('toStart').onclick = () => {
     pausePlayback();
-    appState.currentTime = 0;
+    appState.currentTime = appState.projectStart;
     drawPreview(true); // Force seek
 };
 
 const handleTimelineSeek = (e) => {
-    if(e.target.id === 'endMarker') return;
+    if(e.target.id === 'endMarker' || e.target.id === 'startMarker') return;
     if(e.cancelable) e.preventDefault();
     if(e.target.className === 'tracks-scroll' || e.target.className === 'track') {
         const r = document.getElementById('tracksContainer').getBoundingClientRect();
@@ -613,6 +682,10 @@ const zoomOutBtn = document.getElementById('zoomOut');
 const zoomInBtn = document.getElementById('zoomIn');
 zoomSlider.value = appState.pxPerSec;
 
+const restartAudioIfPlaying = () => {
+    if(appState.isPlaying) startPlayback();
+};
+
 zoomSlider.addEventListener('input', (e) => {
     appState.userAdjustedZoom = true;
     setTimelineZoom(parseFloat(e.target.value));
@@ -624,6 +697,37 @@ zoomOutBtn.addEventListener('click', () => {
 zoomInBtn.addEventListener('click', () => {
     appState.userAdjustedZoom = true;
     setTimelineZoom(appState.pxPerSec + 4);
+});
+
+const applyProjectRange = ({ start = null, end = null } = {}) => {
+    const maxClipTime = getMaxClipTime();
+    if(start !== null) {
+        appState.projectStart = Math.max(0, Math.min(start, appState.projectDuration - 0.1));
+    }
+    if(end !== null) {
+        appState.projectDuration = Math.max(appState.projectStart + 0.1, end);
+    }
+
+    clampCurrentTimeWithinRange();
+    refreshTimeline();
+    drawPreview(true);
+    updateProjectRangeInputs(Math.max(appState.projectDuration, maxClipTime));
+};
+
+projectStartInput.addEventListener('change', (e) => {
+    applyProjectRange({ start: parseFloat(e.target.value) || 0 });
+});
+
+projectEndInput.addEventListener('change', (e) => {
+    applyProjectRange({ end: parseFloat(e.target.value) || appState.projectDuration });
+});
+
+projectStartRange.addEventListener('input', (e) => {
+    applyProjectRange({ start: parseFloat(e.target.value) || 0 });
+});
+
+projectEndRange.addEventListener('input', (e) => {
+    applyProjectRange({ end: parseFloat(e.target.value) || appState.projectDuration });
 });
 
 const snapToggle = document.getElementById('snapToggle');
@@ -783,7 +887,10 @@ document.getElementById('propOpacity').oninput = (e) => {
     }
 };
 document.getElementById('propVolume').oninput = (e) => {
-    if(appState.selectedClip) appState.selectedClip.volume = parseFloat(e.target.value);
+    if(appState.selectedClip) {
+        appState.selectedClip.volume = parseFloat(e.target.value);
+        restartAudioIfPlaying();
+    }
 };
 document.getElementById('propFilter').onchange = (e) => {
     if(appState.selectedClip && appState.selectedClip.type === 'video') {
@@ -794,16 +901,19 @@ document.getElementById('propFilter').onchange = (e) => {
 document.getElementById('propAudioEffect').onchange = (e) => {
     if(appState.selectedClip && appState.selectedClip.type === 'audio') {
         appState.selectedClip.audioEffect = e.target.value;
+        restartAudioIfPlaying();
     }
 };
 document.getElementById('propFadeIn').oninput = (e) => {
     if(appState.selectedClip && appState.selectedClip.type === 'audio') {
         appState.selectedClip.fadeIn = Math.max(0, parseFloat(e.target.value) || 0);
+        restartAudioIfPlaying();
     }
 };
 document.getElementById('propFadeOut').oninput = (e) => {
     if(appState.selectedClip && appState.selectedClip.type === 'audio') {
         appState.selectedClip.fadeOut = Math.max(0, parseFloat(e.target.value) || 0);
+        restartAudioIfPlaying();
     }
 };
 document.getElementById('btnDelete').onclick = () => {

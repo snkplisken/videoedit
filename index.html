@@ -101,6 +101,23 @@
                         <input type="number" id="snapSize" min="0.1" step="0.1" value="0.5">
                     </div>
                 </div>
+                <div class="range-controls">
+                    <label>Project Range</label>
+                    <div class="range-inputs">
+                        <div class="range-field">
+                            <span>Start</span>
+                            <input type="number" id="projectStartInput" min="0" step="0.1" value="0">
+                        </div>
+                        <div class="range-field">
+                            <span>End</span>
+                            <input type="number" id="projectEndInput" min="0" step="0.1" value="30">
+                        </div>
+                    </div>
+                    <div class="range-slider">
+                        <input type="range" id="projectStartRange" min="0" step="0.1" value="0">
+                        <input type="range" id="projectEndRange" min="0" step="0.1" value="30">
+                    </div>
+                </div>
             </div>
             <div class="ruler-container">
                 <canvas id="rulerCanvas"></canvas>
@@ -111,6 +128,9 @@
 
             <!-- NEW: END MARKER -->
             <div id="endMarker" title="Drag to set project end time"></div>
+
+            <!-- NEW: START MARKER -->
+            <div id="startMarker" title="Drag to set project start time"></div>
 
             <div id="tracksContainer"></div>
         </div>
