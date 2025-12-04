@@ -3,6 +3,17 @@ const PX_PER_SEC = 30;
 const TRACK_COUNT_VIDEO = 3;
 const TRACK_COUNT_AUDIO = 2;
 
+const VIDEO_TYPE_MAP = {
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+    webm: 'video/webm',
+    ogg: 'video/ogg',
+    ogv: 'video/ogg',
+    mkv: 'video/x-matroska',
+    avi: 'video/x-msvideo',
+    m4v: 'video/x-m4v'
+};
+
 // --- DOM ELEMENTS ---
 const canvas = document.getElementById('previewCanvas');
 const ctx = canvas.getContext('2d');
@@ -11,6 +22,7 @@ const rulerCtx = rulerCanvas.getContext('2d');
 const videoPool = document.getElementById('video-pool');
 const endMarker = document.getElementById('endMarker');
 const btnExport = document.getElementById('btnExport'); // Reference for UI updates
+const videoSupportProbe = document.createElement('video');
 
 // --- STATE ---
 const appState = {
@@ -43,28 +55,68 @@ function init() {
 }
 
 // --- FILE UPLOAD ---
+const getVideoMimeType = (file) => {
+    if(file.type) return file.type;
+    const parts = file.name.split('.');
+    const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+    return VIDEO_TYPE_MAP[ext] || '';
+};
+
+const warnMaybeUnsupported = (file, supportMap) => {
+    const type = getVideoMimeType(file);
+    const support = type ? videoSupportProbe.canPlayType(type) : 'maybe';
+    if(type && !support) {
+        supportMap.push(`${file.name} (${type})`);
+    }
+};
+
+const buildVideoElement = async (file) => {
+    const vid = document.createElement('video');
+    vid.src = URL.createObjectURL(file);
+    vid.muted = true;
+    vid.preload = "auto";
+    vid.crossOrigin = "anonymous";
+
+    const loaded = await new Promise(res => {
+        vid.onloadedmetadata = () => res(true);
+        vid.onerror = () => res(false);
+    });
+
+    return loaded ? vid : null;
+};
+
 document.getElementById('inpVideo').onchange = async (e) => {
     const files = Array.from(e.target.files);
-    e.target.value = null; 
+    e.target.value = null;
+    const maybeUnsupported = [];
+    const failedLoads = [];
+
     for(let file of files) {
-        const vid = document.createElement('video');
-        vid.src = URL.createObjectURL(file);
-        vid.muted = true; vid.preload = "auto";
-        // Important: set crossOrigin to anonymous to avoid tainting canvas during export
-        vid.crossOrigin = "anonymous"; 
+        warnMaybeUnsupported(file, maybeUnsupported);
+        const vid = await buildVideoElement(file);
+        if(!vid) {
+            failedLoads.push(file.name);
+            continue;
+        }
         videoPool.appendChild(vid);
-        await new Promise(r => { vid.onloadedmetadata = () => r(); vid.onerror = () => r(); });
-        
+
         const clip = {
             id: 'c' + Math.random().toString(36).substr(2, 5),
             type: 'video', file: file, videoElement: vid,
             duration: vid.duration || 10, sourceDuration: vid.duration || 10,
             start: 0, offset: 0, opacity: 1, filter: 'none'
         };
-        const track = appState.tracks[2]; 
+        const track = appState.tracks[2];
         const lastClip = track.clips[track.clips.length-1];
         clip.start = lastClip ? lastClip.start + lastClip.duration : 0;
         track.clips.push(clip);
+    }
+
+    if(maybeUnsupported.length) {
+        console.warn("Browser reported limited support for:", maybeUnsupported.join(', '));
+    }
+    if(failedLoads.length) {
+        alert(`These videos could not be loaded by the browser: ${failedLoads.join(', ')}`);
     }
     refreshTimeline();
 };
