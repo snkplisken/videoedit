@@ -35,6 +35,11 @@ const getClientX = (e) => {
     return e.clientX;
 };
 
+const snapTime = (time) => {
+    if(!appState.snapEnabled || appState.snapGridSize <= 0) return time;
+    return Math.round(time / appState.snapGridSize) * appState.snapGridSize;
+};
+
 // --- STATE ---
 const appState = {
     currentTime: 0,
@@ -44,6 +49,8 @@ const appState = {
     userAdjustedZoom: false,
     autoZooming: false,
     skipNextAutoZoom: false,
+    snapEnabled: true,
+    snapGridSize: 0.5,
     resolution: { width: canvas.width, height: canvas.height },
     isPlaying: false,
     isExporting: false,
@@ -140,14 +147,17 @@ document.getElementById('inpAudio').onchange = async (e) => {
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         const clip = {
             id: 'c' + Math.random().toString(36).substr(2, 5),
-            type: 'audio', 
-            file: file, 
+            type: 'audio',
+            file: file,
             buffer: audioBuffer,
-            duration: audioBuffer.duration, 
+            duration: audioBuffer.duration,
             sourceDuration: audioBuffer.duration,
-            start: 0, 
-            offset: 0, 
-            volume: 1
+            start: 0,
+            offset: 0,
+            volume: 1,
+            audioEffect: 'none',
+            fadeIn: 0,
+            fadeOut: 0
         };
         const track = appState.tracks[3];
         const lastClip = track.clips[track.clips.length-1];
@@ -342,7 +352,8 @@ function onPointerMove(e) {
     }
 
     if(d.action === 'move') {
-        const newStart = Math.max(0, d.originalStart + deltaSec);
+        let newStart = Math.max(0, d.originalStart + deltaSec);
+        newStart = snapTime(newStart);
         d.domElement.style.left = (newStart * appState.pxPerSec) + 'px';
         
         // Handle track jumping
@@ -359,13 +370,17 @@ function onPointerMove(e) {
             }
         }
     } else if (d.action === 'trim-l') {
-        const newDur = d.originalDur - deltaSec;
-        if(newDur > 0.1 && d.originalOffset + deltaSec >= 0) {
-            d.domElement.style.left = ((d.originalStart + deltaSec) * appState.pxPerSec) + 'px';
+        const proposedStart = d.originalStart + deltaSec;
+        const snappedStart = snapTime(Math.max(0, proposedStart));
+        const newDur = d.originalDur + (d.originalStart - snappedStart);
+        if(newDur > 0.1 && d.originalOffset + (snappedStart - d.originalStart) >= 0) {
+            d.domElement.style.left = (snappedStart * appState.pxPerSec) + 'px';
             d.domElement.style.width = (newDur * appState.pxPerSec) + 'px';
         }
     } else if (d.action === 'trim-r') {
-        const newDur = d.originalDur + deltaSec;
+        const proposedEnd = d.originalStart + d.originalDur + deltaSec;
+        const snappedEnd = snapTime(Math.max(d.originalStart, proposedEnd));
+        const newDur = snappedEnd - d.originalStart;
         if(newDur > 0.1 && newDur <= (d.clip.sourceDuration - d.clip.offset)) {
             d.domElement.style.width = (newDur * appState.pxPerSec) + 'px';
         }
@@ -379,23 +394,27 @@ function onPointerUp(e) {
     if(d.action !== 'move-marker') {
         const deltaPx = getClientX(e) - d.startX;
         const deltaSec = deltaPx / appState.pxPerSec;
-        
+
         if(d.action === 'move') {
-            d.clip.start = Math.max(0, d.originalStart + deltaSec);
+            d.clip.start = snapTime(Math.max(0, d.originalStart + deltaSec));
             if(d.currentTrackIdx !== d.startTrackIdx) {
                 const oldTrack = appState.tracks[d.startTrackIdx];
                 oldTrack.clips.splice(oldTrack.clips.indexOf(d.clip), 1);
                 appState.tracks[d.currentTrackIdx].clips.push(d.clip);
             }
         } else if (d.action === 'trim-l') {
-            const newDur = d.originalDur - deltaSec;
-            if(newDur > 0.1 && d.originalOffset + deltaSec >= 0) {
-                d.clip.start = d.originalStart + deltaSec;
+            const proposedStart = d.originalStart + deltaSec;
+            const snappedStart = snapTime(Math.max(0, proposedStart));
+            const newDur = d.originalDur + (d.originalStart - snappedStart);
+            if(newDur > 0.1 && d.originalOffset + (snappedStart - d.originalStart) >= 0) {
+                d.clip.start = snappedStart;
                 d.clip.duration = newDur;
-                d.clip.offset = d.originalOffset + deltaSec;
+                d.clip.offset = d.originalOffset + (snappedStart - d.originalStart);
             }
         } else if (d.action === 'trim-r') {
-            const newDur = d.originalDur + deltaSec;
+            const proposedEnd = d.originalStart + d.originalDur + deltaSec;
+            const snappedEnd = snapTime(Math.max(d.originalStart + 0.1, proposedEnd));
+            const newDur = snappedEnd - d.originalStart;
             if(newDur > 0.1 && newDur <= (d.clip.sourceDuration - d.clip.offset)) {
                 d.clip.duration = newDur;
             }
@@ -441,10 +460,67 @@ function loop() {
 
 // --- AUDIO LOGIC ---
 function stopAudio() {
-    activeAudioNodes.forEach(n => { 
-        try { n.stop(); n.disconnect(); } catch(e){} 
+    activeAudioNodes.forEach(n => {
+        try { if(n.stop) n.stop(); } catch(e){}
+        try { if(n.disconnect) n.disconnect(); } catch(e){}
     });
     activeAudioNodes = [];
+}
+
+function scheduleAudioPlayback(clip, finalDest, startTime, startOffset, dur) {
+    const src = audioCtx.createBufferSource();
+    src.buffer = clip.buffer;
+
+    let currentNode = src;
+    const cleanupNodes = [src];
+
+    if(clip.audioEffect === 'lowpass' || clip.audioEffect === 'highpass') {
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = clip.audioEffect === 'lowpass' ? 'lowpass' : 'highpass';
+        filter.frequency.value = clip.audioEffect === 'lowpass' ? 1200 : 500;
+        currentNode.connect(filter);
+        currentNode = filter;
+        cleanupNodes.push(filter);
+    } else if (clip.audioEffect === 'echo') {
+        const delay = audioCtx.createDelay(0.5);
+        delay.delayTime.value = 0.2;
+        const feedback = audioCtx.createGain();
+        feedback.gain.value = 0.35;
+        delay.connect(feedback);
+        feedback.connect(delay);
+        currentNode.connect(delay);
+        currentNode = delay;
+        cleanupNodes.push(delay, feedback);
+    }
+
+    const gain = audioCtx.createGain();
+    const baseVolume = clip.volume !== undefined ? clip.volume : 1;
+    const safeDur = Math.max(0, dur);
+    const fadeIn = Math.min(Math.max(0, clip.fadeIn || 0), safeDur);
+    const fadeOut = Math.min(Math.max(0, clip.fadeOut || 0), safeDur);
+    cleanupNodes.push(gain);
+
+    currentNode.connect(gain);
+    gain.connect(finalDest);
+
+    const endTime = startTime + safeDur;
+    if(fadeIn > 0) {
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(baseVolume, startTime + fadeIn);
+    } else {
+        gain.gain.setValueAtTime(baseVolume, startTime);
+    }
+
+    if(fadeOut > 0) {
+        const fadeStart = Math.max(startTime, endTime - fadeOut);
+        gain.gain.setValueAtTime(baseVolume, fadeStart);
+        gain.gain.linearRampToValueAtTime(0, endTime);
+    }
+
+    try {
+        src.start(startTime, startOffset, safeDur);
+    } catch(e) { console.warn('Audio schedule error', e); }
+    activeAudioNodes.push(...cleanupNodes);
 }
 
 function startPlayback(outputDestination = null) {
@@ -464,7 +540,7 @@ function startPlayback(outputDestination = null) {
             
             // Only schedule if it hasn't finished yet
             if(clipEnd > appState.currentTime && clip.start < appState.projectDuration) {
-                
+
                 let startOffset = clip.offset;
                 let startTime = appState.playbackStartTime;
                 
@@ -480,20 +556,7 @@ function startPlayback(outputDestination = null) {
                 const timeUntilProjectEnd = appState.projectDuration - Math.max(clip.start, appState.currentTime);
                 dur = Math.min(dur, timeUntilProjectEnd);
 
-                if(dur > 0) {
-                    const src = audioCtx.createBufferSource();
-                    src.buffer = clip.buffer;
-                    const gain = audioCtx.createGain();
-                    gain.gain.value = clip.volume;
-                    
-                    src.connect(gain);
-                    gain.connect(finalDest);
-                    
-                    try {
-                        src.start(startTime, startOffset, dur);
-                        activeAudioNodes.push(src);
-                    } catch(e) { console.warn("Audio schedule error", e); }
-                }
+                if(dur > 0) scheduleAudioPlayback(clip, finalDest, startTime, startOffset, dur);
             }
         });
     }
@@ -561,6 +624,21 @@ zoomOutBtn.addEventListener('click', () => {
 zoomInBtn.addEventListener('click', () => {
     appState.userAdjustedZoom = true;
     setTimelineZoom(appState.pxPerSec + 4);
+});
+
+const snapToggle = document.getElementById('snapToggle');
+const snapSize = document.getElementById('snapSize');
+snapToggle.checked = appState.snapEnabled;
+snapSize.value = appState.snapGridSize;
+
+snapToggle.addEventListener('change', () => {
+    appState.snapEnabled = snapToggle.checked;
+});
+
+snapSize.addEventListener('input', () => {
+    const val = Math.max(0.05, parseFloat(snapSize.value) || appState.snapGridSize);
+    appState.snapGridSize = val;
+    snapSize.value = val;
 });
 
 // --- RENDER VISUALS ---
@@ -683,23 +761,49 @@ function updatePropertiesPanel() {
     const c = appState.selectedClip;
     if(!c) { document.getElementById('propertiesPanel').classList.add('hidden'); return; }
     document.getElementById('propertiesPanel').classList.remove('hidden');
+    const isAudio = c.type === 'audio';
+
     document.getElementById('propVolume').value = c.volume !== undefined ? c.volume : 1;
     document.getElementById('propOpacity').value = c.opacity !== undefined ? c.opacity : 1;
     document.getElementById('propFilter').value = c.filter || 'none';
+    document.getElementById('propAudioEffect').value = c.audioEffect || 'none';
+    document.getElementById('propFadeIn').value = c.fadeIn !== undefined ? c.fadeIn : 0;
+    document.getElementById('propFadeOut').value = c.fadeOut !== undefined ? c.fadeOut : 0;
+
+    document.getElementById('propVideoFilterRow').classList.toggle('hidden', isAudio);
+    document.getElementById('propOpacityRow').classList.toggle('hidden', isAudio);
+    document.getElementById('propAudioEffectRow').classList.toggle('hidden', !isAudio);
+    document.getElementById('propFadeInRow').classList.toggle('hidden', !isAudio);
+    document.getElementById('propFadeOutRow').classList.toggle('hidden', !isAudio);
 }
-document.getElementById('propOpacity').oninput = (e) => { 
+document.getElementById('propOpacity').oninput = (e) => {
     if(appState.selectedClip && appState.selectedClip.type === 'video') {
         appState.selectedClip.opacity = parseFloat(e.target.value);
         drawPreview(true);
     }
 };
-document.getElementById('propVolume').oninput = (e) => { 
-    if(appState.selectedClip) appState.selectedClip.volume = parseFloat(e.target.value); 
+document.getElementById('propVolume').oninput = (e) => {
+    if(appState.selectedClip) appState.selectedClip.volume = parseFloat(e.target.value);
 };
-document.getElementById('propFilter').onchange = (e) => { 
+document.getElementById('propFilter').onchange = (e) => {
     if(appState.selectedClip && appState.selectedClip.type === 'video') {
         appState.selectedClip.filter = e.target.value;
         drawPreview(true);
+    }
+};
+document.getElementById('propAudioEffect').onchange = (e) => {
+    if(appState.selectedClip && appState.selectedClip.type === 'audio') {
+        appState.selectedClip.audioEffect = e.target.value;
+    }
+};
+document.getElementById('propFadeIn').oninput = (e) => {
+    if(appState.selectedClip && appState.selectedClip.type === 'audio') {
+        appState.selectedClip.fadeIn = Math.max(0, parseFloat(e.target.value) || 0);
+    }
+};
+document.getElementById('propFadeOut').oninput = (e) => {
+    if(appState.selectedClip && appState.selectedClip.type === 'audio') {
+        appState.selectedClip.fadeOut = Math.max(0, parseFloat(e.target.value) || 0);
     }
 };
 document.getElementById('btnDelete').onclick = () => {
@@ -713,6 +817,35 @@ document.getElementById('btnDelete').onclick = () => {
         refreshTimeline();
         drawPreview(true);
     }
+};
+
+document.getElementById('btnDuplicate').onclick = async () => {
+    const source = appState.selectedClip;
+    if(!source) return;
+
+    const track = appState.tracks.find(t => t.clips.includes(source));
+    if(!track) return;
+
+    let clone = { ...source };
+    clone.id = 'c' + Math.random().toString(36).substr(2, 5);
+    clone.start = snapTime(source.start + source.duration + 0.1);
+
+    if(source.type === 'video') {
+        const dupVid = source.videoElement.cloneNode(true);
+        dupVid.src = source.videoElement.src;
+        dupVid.muted = true;
+        dupVid.preload = 'auto';
+        dupVid.crossOrigin = 'anonymous';
+        dupVid.playsInline = true;
+        videoPool.appendChild(dupVid);
+        clone.videoElement = dupVid;
+    }
+
+    track.clips.push(clone);
+    appState.selectedClip = clone;
+    refreshTimeline();
+    drawPreview(true);
+    updatePropertiesPanel();
 };
 
 // --- EXPORT ---
