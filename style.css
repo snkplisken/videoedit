@@ -307,11 +307,13 @@ canvas#previewCanvas {
     accent-color: var(--accent);
 }
 
-.ruler-container { 
-    height: 25px; 
-    background: #222; 
-    border-bottom: 1px solid #333; 
+.ruler-container {
+    height: 25px;
+    background: #222;
+    border-bottom: 1px solid #333;
     flex-shrink: 0;
+    overflow: hidden;
+    position: relative;
 }
 
 .tracks-scroll {

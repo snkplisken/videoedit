@@ -26,6 +26,7 @@ const videoPool = document.getElementById('video-pool');
 const endMarker = document.getElementById('endMarker');
 const btnExport = document.getElementById('btnExport');
 const videoSupportProbe = document.createElement('video');
+const timelineScroll = document.getElementById('timelineScroll');
 
 // Normalize mouse/touch coordinates for mobile support
 const getClientX = (e) => {
@@ -40,6 +41,8 @@ const appState = {
     projectDuration: 30,
     containerWidth: 60,
     pxPerSec: PX_PER_SEC_DEFAULT,
+    userAdjustedZoom: false,
+    autoZooming: false,
     resolution: { width: canvas.width, height: canvas.height },
     isPlaying: false,
     isExporting: false,
@@ -176,8 +179,22 @@ function refreshTimeline() {
     // Calculate container width based on content
     let maxClipTime = 0;
     appState.tracks.forEach(t => t.clips.forEach(c => maxClipTime = Math.max(maxClipTime, c.start + c.duration)));
+
+    const contentDuration = Math.max(appState.projectDuration, maxClipTime);
+    if(contentDuration > appState.projectDuration) appState.projectDuration = contentDuration;
+
+    if(!appState.userAdjustedZoom && !appState.autoZooming) {
+        const fitZoom = calculateFitZoom(contentDuration);
+        if(Math.abs(fitZoom - appState.pxPerSec) > 0.5) {
+            appState.autoZooming = true;
+            setTimelineZoom(fitZoom, appState.currentTime);
+            appState.autoZooming = false;
+            return;
+        }
+    }
+
     appState.containerWidth = Math.max(maxClipTime + 10, appState.projectDuration + 10, 60);
-    
+
     const wPx = appState.containerWidth * appState.pxPerSec;
     document.querySelectorAll('.track').forEach(t => t.style.width = wPx + 'px');
     updateRuler();
@@ -209,21 +226,35 @@ function refreshTimeline() {
             trackDiv.appendChild(el);
         });
     });
+
+    syncRulerToScroll();
 }
 
 function setTimelineZoom(value, anchorTime = appState.currentTime) {
     const clamped = Math.min(PX_PER_SEC_MAX, Math.max(PX_PER_SEC_MIN, value));
     if(clamped === appState.pxPerSec) return;
 
-    const scroll = document.getElementById('timelineScroll');
-    const centerOffset = (scroll.scrollLeft + scroll.clientWidth / 2) - (anchorTime * appState.pxPerSec);
+    const centerOffset = (timelineScroll.scrollLeft + timelineScroll.clientWidth / 2) - (anchorTime * appState.pxPerSec);
 
     appState.pxPerSec = clamped;
     document.getElementById('timelineZoom').value = clamped;
     refreshTimeline();
 
     const newCenter = (anchorTime * appState.pxPerSec) + centerOffset;
-    scroll.scrollLeft = Math.max(0, newCenter - scroll.clientWidth / 2);
+    timelineScroll.scrollLeft = Math.max(0, newCenter - timelineScroll.clientWidth / 2);
+}
+
+function calculateFitZoom(durationSeconds) {
+    const viewportWidth = timelineScroll ? timelineScroll.clientWidth : 0;
+    const baseWidth = viewportWidth || window.innerWidth || 1200;
+    const paddedDuration = Math.max(1, durationSeconds + Math.max(4, durationSeconds * 0.05));
+    const target = baseWidth / paddedDuration;
+    return Math.min(PX_PER_SEC_MAX, Math.max(PX_PER_SEC_MIN, target));
+}
+
+function syncRulerToScroll() {
+    if(!timelineScroll) return;
+    rulerCanvas.style.transform = `translateX(-${timelineScroll.scrollLeft}px)`;
 }
 
 function updateRuler() {
@@ -505,8 +536,9 @@ const handleTimelineSeek = (e) => {
     }
 };
 
-document.getElementById('timelineScroll').addEventListener('mousedown', handleTimelineSeek);
-document.getElementById('timelineScroll').addEventListener('touchstart', handleTimelineSeek, { passive: false });
+timelineScroll.addEventListener('mousedown', handleTimelineSeek);
+timelineScroll.addEventListener('touchstart', handleTimelineSeek, { passive: false });
+timelineScroll.addEventListener('scroll', syncRulerToScroll);
 
 // Timeline Zoom Controls
 const zoomSlider = document.getElementById('timelineZoom');
@@ -514,9 +546,18 @@ const zoomOutBtn = document.getElementById('zoomOut');
 const zoomInBtn = document.getElementById('zoomIn');
 zoomSlider.value = appState.pxPerSec;
 
-zoomSlider.addEventListener('input', (e) => setTimelineZoom(parseFloat(e.target.value)));
-zoomOutBtn.addEventListener('click', () => setTimelineZoom(appState.pxPerSec - 4));
-zoomInBtn.addEventListener('click', () => setTimelineZoom(appState.pxPerSec + 4));
+zoomSlider.addEventListener('input', (e) => {
+    appState.userAdjustedZoom = true;
+    setTimelineZoom(parseFloat(e.target.value));
+});
+zoomOutBtn.addEventListener('click', () => {
+    appState.userAdjustedZoom = true;
+    setTimelineZoom(appState.pxPerSec - 4);
+});
+zoomInBtn.addEventListener('click', () => {
+    appState.userAdjustedZoom = true;
+    setTimelineZoom(appState.pxPerSec + 4);
+});
 
 // --- RENDER VISUALS ---
 function drawPreview(forceSeek = false) {
