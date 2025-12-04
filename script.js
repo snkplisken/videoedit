@@ -43,6 +43,7 @@ const appState = {
     pxPerSec: PX_PER_SEC_DEFAULT,
     userAdjustedZoom: false,
     autoZooming: false,
+    skipNextAutoZoom: false,
     resolution: { width: canvas.width, height: canvas.height },
     isPlaying: false,
     isExporting: false,
@@ -183,7 +184,8 @@ function refreshTimeline() {
     const contentDuration = Math.max(appState.projectDuration, maxClipTime);
     if(contentDuration > appState.projectDuration) appState.projectDuration = contentDuration;
 
-    if(!appState.userAdjustedZoom && !appState.autoZooming) {
+    const shouldAutoZoom = !appState.userAdjustedZoom && !appState.autoZooming && !appState.skipNextAutoZoom && !(appState.dragging && appState.dragging.action === 'move-marker');
+    if(shouldAutoZoom) {
         const fitZoom = calculateFitZoom(contentDuration);
         if(Math.abs(fitZoom - appState.pxPerSec) > 0.5) {
             appState.autoZooming = true;
@@ -192,6 +194,7 @@ function refreshTimeline() {
             return;
         }
     }
+    if(appState.skipNextAutoZoom) appState.skipNextAutoZoom = false;
 
     appState.containerWidth = Math.max(maxClipTime + 10, appState.projectDuration + 10, 60);
 
@@ -297,6 +300,7 @@ const startMarkerDrag = (e) => {
     e.stopPropagation();
     if(e.cancelable) e.preventDefault();
     const clientX = getClientX(e);
+    appState.skipNextAutoZoom = true;
     appState.dragging = { action: 'move-marker', startX: clientX, originalTime: appState.projectDuration };
     addDragListeners();
 };
