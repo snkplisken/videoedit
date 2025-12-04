@@ -12,7 +12,6 @@
     <!-- TOP: HEADER -->
     <header>
         <div class="logo">JS-EDITOR <span>PRO</span></div>
-        <button id="btnExport" class="btn-primary">Export Project</button>
     </header>
 
     <!-- MIDDLE: BINS & PREVIEW -->
@@ -64,15 +63,28 @@
         <div class="viewer">
             <canvas id="previewCanvas" width="854" height="480"></canvas>
             <div class="transport">
-                <button id="toStart">|&lt;</button>
-                <button id="playPause" class="btn-big">▶</button>
-                <span id="timecode">00:00:00</span>
+                <div class="transport-controls">
+                    <button id="toStart">|&lt;</button>
+                    <button id="playPause" class="btn-big">▶</button>
+                    <span id="timecode">00:00:00</span>
+                </div>
+                <button id="btnExport" class="btn-primary export-btn">Export Project</button>
             </div>
         </div>
     </div>
 
     <!-- BOTTOM: TIMELINE -->
     <div class="timeline-area">
+        <div class="timeline-toolbar">
+            <div class="zoom-controls">
+                <label for="timelineZoom">Timeline Zoom</label>
+                <div class="zoom-buttons">
+                    <button id="zoomOut" aria-label="Zoom out">−</button>
+                    <input type="range" id="timelineZoom" min="8" max="120" step="2" value="30">
+                    <button id="zoomIn" aria-label="Zoom in">+</button>
+                </div>
+            </div>
+        </div>
         <div class="ruler-container">
             <canvas id="rulerCanvas"></canvas>
         </div>

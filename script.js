@@ -1,5 +1,7 @@
 // --- CONFIGURATION ---
-const PX_PER_SEC = 30;
+const PX_PER_SEC_DEFAULT = 30;
+const PX_PER_SEC_MIN = 8;
+const PX_PER_SEC_MAX = 120;
 const TRACK_COUNT_VIDEO = 3;
 const TRACK_COUNT_AUDIO = 2;
 
@@ -37,6 +39,7 @@ const appState = {
     currentTime: 0,
     projectDuration: 30,
     containerWidth: 60,
+    pxPerSec: PX_PER_SEC_DEFAULT,
     resolution: { width: canvas.width, height: canvas.height },
     isPlaying: false,
     isExporting: false,
@@ -175,11 +178,11 @@ function refreshTimeline() {
     appState.tracks.forEach(t => t.clips.forEach(c => maxClipTime = Math.max(maxClipTime, c.start + c.duration)));
     appState.containerWidth = Math.max(maxClipTime + 10, appState.projectDuration + 10, 60);
     
-    const wPx = appState.containerWidth * PX_PER_SEC;
+    const wPx = appState.containerWidth * appState.pxPerSec;
     document.querySelectorAll('.track').forEach(t => t.style.width = wPx + 'px');
     updateRuler();
 
-    endMarker.style.left = (appState.projectDuration * PX_PER_SEC) + 'px';
+    endMarker.style.left = (appState.projectDuration * appState.pxPerSec) + 'px';
 
     if(appState.dragging && appState.dragging.action === 'move-marker') return;
 
@@ -191,8 +194,8 @@ function refreshTimeline() {
             const el = document.createElement('div');
             el.className = `clip type-${clip.type}`;
             if(appState.selectedClip && appState.selectedClip.id === clip.id) el.classList.add('selected');
-            el.style.left = (clip.start * PX_PER_SEC) + 'px';
-            el.style.width = (clip.duration * PX_PER_SEC) + 'px';
+            el.style.left = (clip.start * appState.pxPerSec) + 'px';
+            el.style.width = (clip.duration * appState.pxPerSec) + 'px';
             
             // HTML Structure for handles
             el.innerHTML = `
@@ -208,8 +211,23 @@ function refreshTimeline() {
     });
 }
 
+function setTimelineZoom(value, anchorTime = appState.currentTime) {
+    const clamped = Math.min(PX_PER_SEC_MAX, Math.max(PX_PER_SEC_MIN, value));
+    if(clamped === appState.pxPerSec) return;
+
+    const scroll = document.getElementById('timelineScroll');
+    const centerOffset = (scroll.scrollLeft + scroll.clientWidth / 2) - (anchorTime * appState.pxPerSec);
+
+    appState.pxPerSec = clamped;
+    document.getElementById('timelineZoom').value = clamped;
+    refreshTimeline();
+
+    const newCenter = (anchorTime * appState.pxPerSec) + centerOffset;
+    scroll.scrollLeft = Math.max(0, newCenter - scroll.clientWidth / 2);
+}
+
 function updateRuler() {
-    const width = appState.containerWidth * PX_PER_SEC;
+    const width = appState.containerWidth * appState.pxPerSec;
     if(rulerCanvas.width !== width) rulerCanvas.width = width; // Only resize if needed
     
     const rc = rulerCtx;
@@ -219,10 +237,10 @@ function updateRuler() {
     rc.fillStyle = '#888'; 
     rc.font = '10px monospace';
     
-    for(let i=0; i<width; i+=PX_PER_SEC) {
-        if((i/PX_PER_SEC)%5 === 0) {
+    for(let i=0; i<width; i+=appState.pxPerSec) {
+        if((i/appState.pxPerSec)%5 === 0) {
             rc.beginPath(); rc.moveTo(i, 0); rc.lineTo(i, 20); rc.stroke();
-            rc.fillText(formatTime(i/PX_PER_SEC), i+4, 12);
+            rc.fillText(formatTime(i/appState.pxPerSec), i+4, 12);
         } else {
             rc.beginPath(); rc.moveTo(i, 15); rc.lineTo(i, 25); rc.stroke();
         }
@@ -280,7 +298,7 @@ function onPointerMove(e) {
     if(e.cancelable) e.preventDefault();
     const d = appState.dragging;
     const deltaPx = getClientX(e) - d.startX;
-    const deltaSec = deltaPx / PX_PER_SEC;
+    const deltaSec = deltaPx / appState.pxPerSec;
 
     if(d.action === 'move-marker') {
         appState.projectDuration = Math.max(1, d.originalTime + deltaSec);
@@ -290,7 +308,7 @@ function onPointerMove(e) {
 
     if(d.action === 'move') {
         const newStart = Math.max(0, d.originalStart + deltaSec);
-        d.domElement.style.left = (newStart * PX_PER_SEC) + 'px';
+        d.domElement.style.left = (newStart * appState.pxPerSec) + 'px';
         
         // Handle track jumping
             const hoveredEl = document.elementFromPoint(getClientX(e), e.clientY || (e.touches && e.touches[0].clientY));
@@ -308,13 +326,13 @@ function onPointerMove(e) {
     } else if (d.action === 'trim-l') {
         const newDur = d.originalDur - deltaSec;
         if(newDur > 0.1 && d.originalOffset + deltaSec >= 0) {
-            d.domElement.style.left = ((d.originalStart + deltaSec) * PX_PER_SEC) + 'px';
-            d.domElement.style.width = (newDur * PX_PER_SEC) + 'px';
+            d.domElement.style.left = ((d.originalStart + deltaSec) * appState.pxPerSec) + 'px';
+            d.domElement.style.width = (newDur * appState.pxPerSec) + 'px';
         }
     } else if (d.action === 'trim-r') {
         const newDur = d.originalDur + deltaSec;
         if(newDur > 0.1 && newDur <= (d.clip.sourceDuration - d.clip.offset)) {
-            d.domElement.style.width = (newDur * PX_PER_SEC) + 'px';
+            d.domElement.style.width = (newDur * appState.pxPerSec) + 'px';
         }
     }
 }
@@ -325,7 +343,7 @@ function onPointerUp(e) {
 
     if(d.action !== 'move-marker') {
         const deltaPx = getClientX(e) - d.startX;
-        const deltaSec = deltaPx / PX_PER_SEC;
+        const deltaSec = deltaPx / appState.pxPerSec;
         
         if(d.action === 'move') {
             d.clip.start = Math.max(0, d.originalStart + deltaSec);
@@ -375,7 +393,7 @@ function loop() {
         
         // Auto-Scroll Timeline
         const scroll = document.getElementById('timelineScroll');
-        const playheadPx = appState.currentTime * PX_PER_SEC;
+        const playheadPx = appState.currentTime * appState.pxPerSec;
         if(playheadPx > scroll.scrollLeft + scroll.clientWidth || playheadPx < scroll.scrollLeft) {
             scroll.scrollLeft = playheadPx - 50;
         }
@@ -476,7 +494,7 @@ const handleTimelineSeek = (e) => {
     if(e.cancelable) e.preventDefault();
     if(e.target.className === 'tracks-scroll' || e.target.className === 'track') {
         const r = document.getElementById('tracksContainer').getBoundingClientRect();
-        const clickedTime = Math.max(0, (getClientX(e) - r.left) / PX_PER_SEC);
+        const clickedTime = Math.max(0, (getClientX(e) - r.left) / appState.pxPerSec);
 
         appState.currentTime = clickedTime;
 
@@ -490,6 +508,16 @@ const handleTimelineSeek = (e) => {
 document.getElementById('timelineScroll').addEventListener('mousedown', handleTimelineSeek);
 document.getElementById('timelineScroll').addEventListener('touchstart', handleTimelineSeek, { passive: false });
 
+// Timeline Zoom Controls
+const zoomSlider = document.getElementById('timelineZoom');
+const zoomOutBtn = document.getElementById('zoomOut');
+const zoomInBtn = document.getElementById('zoomIn');
+zoomSlider.value = appState.pxPerSec;
+
+zoomSlider.addEventListener('input', (e) => setTimelineZoom(parseFloat(e.target.value)));
+zoomOutBtn.addEventListener('click', () => setTimelineZoom(appState.pxPerSec - 4));
+zoomInBtn.addEventListener('click', () => setTimelineZoom(appState.pxPerSec + 4));
+
 // --- RENDER VISUALS ---
 function drawPreview(forceSeek = false) {
     // 1. Clear Canvas
@@ -497,7 +525,7 @@ function drawPreview(forceSeek = false) {
     ctx.fillRect(0,0, canvas.width, canvas.height);
     
     // 2. Render Playhead & Time
-    document.getElementById('playhead').style.left = (appState.currentTime * PX_PER_SEC) + 'px';
+    document.getElementById('playhead').style.left = (appState.currentTime * appState.pxPerSec) + 'px';
     document.getElementById('timecode').innerText = formatTime(appState.currentTime);
 
     // 3. Render Video Tracks
