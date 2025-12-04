@@ -20,6 +20,7 @@
             <div class="section-title">Media Import</div>
             <div class="import-buttons">
                 <label class="btn-import">+ Video (MP4/MOV/More)<input type="file" id="inpVideo" accept="video/mp4,video/webm,video/quicktime,video/ogg,video/x-matroska,video/x-msvideo,video/avi,video/*" multiple></label>
+                <label class="btn-import">+ Image (PNG/JPG/SVG)<input type="file" id="inpImage" accept="image/*" multiple></label>
                 <label class="btn-import">+ Audio (MP3)<input type="file" id="inpAudio" accept="audio/*" multiple></label>
             </div>
 
@@ -112,10 +113,6 @@
                             <span>End</span>
                             <input type="number" id="projectEndInput" min="0" step="0.1" value="30">
                         </div>
-                    </div>
-                    <div class="range-slider">
-                        <input type="range" id="projectStartRange" min="0" step="0.1" value="0">
-                        <input type="range" id="projectEndRange" min="0" step="0.1" value="30">
                     </div>
                 </div>
             </div>

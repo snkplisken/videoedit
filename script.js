@@ -30,14 +30,19 @@ const videoSupportProbe = document.createElement('video');
 const timelineScroll = document.getElementById('timelineScroll');
 const projectStartInput = document.getElementById('projectStartInput');
 const projectEndInput = document.getElementById('projectEndInput');
-const projectStartRange = document.getElementById('projectStartRange');
-const projectEndRange = document.getElementById('projectEndRange');
+const imageInput = document.getElementById('inpImage');
 
 // Normalize mouse/touch coordinates for mobile support
 const getClientX = (e) => {
     if(e.touches && e.touches.length) return e.touches[0].clientX;
     if(e.changedTouches && e.changedTouches.length) return e.changedTouches[0].clientX;
     return e.clientX;
+};
+
+const getClientY = (e) => {
+    if(e.touches && e.touches.length) return e.touches[0].clientY;
+    if(e.changedTouches && e.changedTouches.length) return e.changedTouches[0].clientY;
+    return e.clientY;
 };
 
 const snapTime = (time) => {
@@ -56,10 +61,6 @@ const updateProjectRangeInputs = (maxDurationOverride = null) => {
     const safeEnd = Math.max(appState.projectDuration, appState.projectStart + 0.1);
     projectStartInput.value = appState.projectStart.toFixed(1);
     projectEndInput.value = safeEnd.toFixed(1);
-    projectStartRange.max = Math.max(0.1, safeEnd - 0.1);
-    projectEndRange.max = Math.max(extent + 1, safeEnd);
-    projectStartRange.value = appState.projectStart;
-    projectEndRange.value = safeEnd;
 };
 
 const clampCurrentTimeWithinRange = () => {
@@ -85,8 +86,10 @@ const appState = {
     playbackStartTime: 0, // When playback started (Audio Time)
     playbackStartOffset: 0, // Where in the timeline playback started
     selectedClip: null,
+    currentVisualFrame: null,
     tracks: [],
-    dragging: null
+    dragging: null,
+    canvasDrag: null
 };
 
 // --- AUDIO ENGINE ---
@@ -132,6 +135,17 @@ const buildVideoElement = async (file) => {
     return loaded ? vid : null;
 };
 
+const buildImageElement = async (file) => {
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    img.crossOrigin = 'anonymous';
+    const loaded = await new Promise(res => {
+        img.onload = () => res(true);
+        img.onerror = () => res(false);
+    });
+    return loaded ? img : null;
+};
+
 document.getElementById('inpVideo').onchange = async (e) => {
     const files = Array.from(e.target.files);
     e.target.value = null;
@@ -146,19 +160,51 @@ document.getElementById('inpVideo').onchange = async (e) => {
 
         const clip = {
             id: 'c' + Math.random().toString(36).substr(2, 5),
-            type: 'video', 
-            file: file, 
+            type: 'video',
+            file: file,
             videoElement: vid,
-            duration: vid.duration || 10, 
+            duration: vid.duration || 10,
             sourceDuration: vid.duration || 10,
-            start: 0, 
-            offset: 0, 
-            opacity: 1, 
-            filter: 'none'
+            start: 0,
+            offset: 0,
+            opacity: 1,
+            filter: 'none',
+            transform: { x: 0, y: 0, scale: 1 }
         };
 
         // Add to first available spot on Track 3 (default video track)
         const track = appState.tracks[2]; 
+        const lastClip = track.clips[track.clips.length-1];
+        clip.start = lastClip ? lastClip.start + lastClip.duration : 0;
+        track.clips.push(clip);
+    }
+    refreshTimeline();
+    drawPreview();
+};
+
+imageInput.onchange = async (e) => {
+    const files = Array.from(e.target.files);
+    e.target.value = null;
+
+    for(let file of files) {
+        const img = await buildImageElement(file);
+        if(!img) { console.error(`Failed to load ${file.name}`); continue; }
+
+        const clip = {
+            id: 'c' + Math.random().toString(36).substr(2, 5),
+            type: 'image',
+            file,
+            imageElement: img,
+            duration: 5,
+            sourceDuration: 3600,
+            start: 0,
+            offset: 0,
+            opacity: 1,
+            filter: 'none',
+            transform: { x: 0, y: 0, scale: 1 }
+        };
+
+        const track = appState.tracks[2];
         const lastClip = track.clips[track.clips.length-1];
         clip.start = lastClip ? lastClip.start + lastClip.duration : 0;
         track.clips.push(clip);
@@ -419,7 +465,8 @@ function onPointerMove(e) {
         if(trackDiv) {
             const trackType = trackDiv.dataset.type;
             const trackId = parseInt(trackDiv.dataset.id);
-            if(trackType === d.clip.type && trackId !== d.currentTrackIdx) {
+            const isCompatibleTrack = (trackType === 'video' && d.clip.type !== 'audio') || (trackType === 'audio' && d.clip.type === 'audio');
+            if(isCompatibleTrack && trackId !== d.currentTrackIdx) {
                 trackDiv.appendChild(d.domElement);
                 document.querySelectorAll('.track').forEach(t => t.classList.remove('drag-over'));
                 trackDiv.classList.add('drag-over');
@@ -722,14 +769,6 @@ projectEndInput.addEventListener('change', (e) => {
     applyProjectRange({ end: parseFloat(e.target.value) || appState.projectDuration });
 });
 
-projectStartRange.addEventListener('input', (e) => {
-    applyProjectRange({ start: parseFloat(e.target.value) || 0 });
-});
-
-projectEndRange.addEventListener('input', (e) => {
-    applyProjectRange({ end: parseFloat(e.target.value) || appState.projectDuration });
-});
-
 const snapToggle = document.getElementById('snapToggle');
 const snapSize = document.getElementById('snapSize');
 snapToggle.checked = appState.snapEnabled;
@@ -750,7 +789,7 @@ function drawPreview(forceSeek = false) {
     // 1. Clear Canvas
     ctx.fillStyle = '#000';
     ctx.fillRect(0,0, canvas.width, canvas.height);
-    
+
     // 2. Render Playhead & Time
     document.getElementById('playhead').style.left = (appState.currentTime * appState.pxPerSec) + 'px';
     document.getElementById('timecode').innerText = formatTime(appState.currentTime);
@@ -758,42 +797,42 @@ function drawPreview(forceSeek = false) {
     // 3. Render Video Tracks
     // Sort tracks by ID (lower ID = lower layer, but usually top track covers bottom)
     // Here we iterate 0..2. Track 2 is top layer in UI? Usually higher index = top layer.
+    appState.currentVisualFrame = null;
     for(let i=0; i<TRACK_COUNT_VIDEO; i++) {
         const track = appState.tracks[i];
-        
+
         // Find clip under playhead
-        const clip = track.clips.find(c => 
-            appState.currentTime >= c.start && 
+        const clip = track.clips.find(c =>
+            appState.currentTime >= c.start &&
             appState.currentTime < c.start + c.duration
         );
 
         if(clip) {
-            const vid = clip.videoElement;
+            const isVideo = clip.type === 'video';
+            const mediaEl = isVideo ? clip.videoElement : clip.imageElement;
+            const naturalW = isVideo ? mediaEl.videoWidth : mediaEl.naturalWidth;
+            const naturalH = isVideo ? mediaEl.videoHeight : mediaEl.naturalHeight;
             const targetTime = (appState.currentTime - clip.start) + clip.offset;
-            
-            // --- SMART SYNC LOGIC (The Anti-Choppy Fix) ---
-            if(appState.isPlaying && !forceSeek) {
-                // If playing, only seek if drift is bad (> 0.25s)
-                if(Math.abs(vid.currentTime - targetTime) > 0.25) {
-                    vid.currentTime = targetTime;
-                }
-                // Ensure it's moving
-                if(vid.paused) vid.play().catch(()=>{}); 
-            } else {
-                // Paused or Scrubbing: Force exact frame
-                vid.pause();
-                // Avoid redundant setting to save CPU
-                if(Math.abs(vid.currentTime - targetTime) > 0.05) {
-                    vid.currentTime = targetTime;
+
+            if(isVideo) {
+                // --- SMART SYNC LOGIC (The Anti-Choppy Fix) ---
+                if(appState.isPlaying && !forceSeek) {
+                    if(Math.abs(mediaEl.currentTime - targetTime) > 0.25) {
+                        mediaEl.currentTime = targetTime;
+                    }
+                    if(mediaEl.paused) mediaEl.play().catch(()=>{});
+                } else {
+                    mediaEl.pause();
+                    if(Math.abs(mediaEl.currentTime - targetTime) > 0.05) {
+                        mediaEl.currentTime = targetTime;
+                    }
                 }
             }
 
-            // Draw to canvas
-            if(vid.readyState >= 2) { // HAVE_CURRENT_DATA
+            if((isVideo && mediaEl.readyState >= 2) || (!isVideo && naturalW > 0 && naturalH > 0)) {
                 ctx.save();
                 ctx.globalAlpha = clip.opacity;
-                
-                // Filters (Optimized string concat)
+
                 if(clip.filter !== 'none') {
                     let f = '';
                     if(clip.filter === 'bw') f = 'grayscale(100%)';
@@ -803,24 +842,109 @@ function drawPreview(forceSeek = false) {
                     ctx.filter = f;
                 }
 
-                // Aspect Fit
-                const scale = Math.min(canvas.width / vid.videoWidth, canvas.height / vid.videoHeight);
-                const w = vid.videoWidth * scale;
-                const h = vid.videoHeight * scale;
-                const x = (canvas.width - w) / 2;
-                const y = (canvas.height - h) / 2;
+                const transform = clip.transform || { x: 0, y: 0, scale: 1 };
+                const baseScale = Math.min(canvas.width / naturalW, canvas.height / naturalH);
+                const finalScale = baseScale * Math.max(0.1, transform.scale || 1);
+                const w = naturalW * finalScale;
+                const h = naturalH * finalScale;
+                const x = (canvas.width - w) / 2 + (transform.x || 0);
+                const y = (canvas.height - h) / 2 + (transform.y || 0);
 
-                ctx.drawImage(vid, x, y, w, h);
+                ctx.drawImage(mediaEl, x, y, w, h);
+
+                if(appState.selectedClip && appState.selectedClip.id === clip.id) {
+                    ctx.strokeStyle = '#5af0ff';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5,4]);
+                    ctx.strokeRect(x, y, w, h);
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = '#5af0ff';
+                    ctx.fillRect(x + w - 10, y + h - 10, 16, 16);
+                    appState.currentVisualFrame = { clipId: clip.id, rect: { x, y, w, h } };
+                }
                 ctx.restore();
             }
         } else {
             // Ensure unused clips are paused to save CPU
             track.clips.forEach(c => {
-                if(!c.videoElement.paused) c.videoElement.pause();
+                if(c.type === 'video' && c.videoElement && !c.videoElement.paused) c.videoElement.pause();
             });
         }
     }
 }
+
+// --- CANVAS TRANSFORM HANDLING ---
+const addCanvasDragListeners = () => {
+    window.addEventListener('mousemove', onCanvasPointerMove);
+    window.addEventListener('mouseup', onCanvasPointerUp);
+    window.addEventListener('touchmove', onCanvasPointerMove, { passive: false });
+    window.addEventListener('touchend', onCanvasPointerUp);
+};
+
+const removeCanvasDragListeners = () => {
+    window.removeEventListener('mousemove', onCanvasPointerMove);
+    window.removeEventListener('mouseup', onCanvasPointerUp);
+    window.removeEventListener('touchmove', onCanvasPointerMove);
+    window.removeEventListener('touchend', onCanvasPointerUp);
+};
+
+const getCanvasPoint = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+        x: (getClientX(e) - rect.left) * scaleX,
+        y: (getClientY(e) - rect.top) * scaleY
+    };
+};
+
+const startCanvasTransform = (e) => {
+    if(!appState.selectedClip || !appState.currentVisualFrame || appState.currentVisualFrame.clipId !== appState.selectedClip.id) return;
+    if(!appState.selectedClip.transform) appState.selectedClip.transform = { x: 0, y: 0, scale: 1 };
+    const pt = getCanvasPoint(e);
+    const rect = appState.currentVisualFrame.rect;
+    if(pt.x < rect.x || pt.x > rect.x + rect.w || pt.y < rect.y || pt.y > rect.y + rect.h) return;
+
+    if(e.cancelable) e.preventDefault();
+    const nearHandle = (pt.x >= rect.x + rect.w - 20) && (pt.y >= rect.y + rect.h - 20);
+    appState.canvasDrag = {
+        mode: nearHandle ? 'scale' : 'move',
+        start: pt,
+        origin: { ...appState.selectedClip.transform },
+        frame: rect
+    };
+    addCanvasDragListeners();
+};
+
+function onCanvasPointerMove(e) {
+    if(!appState.canvasDrag) return;
+    if(e.cancelable) e.preventDefault();
+    const drag = appState.canvasDrag;
+    const pt = getCanvasPoint(e);
+    const dx = pt.x - drag.start.x;
+    const dy = pt.y - drag.start.y;
+    const clip = appState.selectedClip;
+    if(!clip.transform) clip.transform = { x: 0, y: 0, scale: 1 };
+
+    if(drag.mode === 'move') {
+        clip.transform.x = drag.origin.x + dx;
+        clip.transform.y = drag.origin.y + dy;
+    } else {
+        const maxDelta = Math.max(dx, dy);
+        const base = Math.max(drag.frame.w, drag.frame.h);
+        clip.transform.scale = Math.max(0.1, Math.min(4, drag.origin.scale + (maxDelta / base)));
+    }
+    drawPreview(true);
+}
+
+function onCanvasPointerUp() {
+    if(!appState.canvasDrag) return;
+    appState.canvasDrag = null;
+    removeCanvasDragListeners();
+}
+
+canvas.addEventListener('mousedown', startCanvasTransform);
+canvas.addEventListener('touchstart', startCanvasTransform, { passive: false });
 
 // --- PROJECT SETTINGS ---
 function initResolutionControls() {
@@ -936,7 +1060,7 @@ document.getElementById('btnDuplicate').onclick = async () => {
     const track = appState.tracks.find(t => t.clips.includes(source));
     if(!track) return;
 
-    let clone = { ...source };
+    let clone = { ...source, transform: { ...source.transform } };
     clone.id = 'c' + Math.random().toString(36).substr(2, 5);
     clone.start = snapTime(source.start + source.duration + 0.1);
 
@@ -949,6 +1073,11 @@ document.getElementById('btnDuplicate').onclick = async () => {
         dupVid.playsInline = true;
         videoPool.appendChild(dupVid);
         clone.videoElement = dupVid;
+    } else if (source.type === 'image') {
+        const dupImg = new Image();
+        dupImg.src = source.imageElement.src;
+        dupImg.crossOrigin = 'anonymous';
+        clone.imageElement = dupImg;
     }
 
     track.clips.push(clone);

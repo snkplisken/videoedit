@@ -393,16 +393,6 @@ canvas#previewCanvas {
     border-radius: 6px;
 }
 
-.range-slider {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-}
-
-.range-slider input[type="range"] {
-    width: 100%;
-}
-
 .ruler-container {
     height: 25px;
     background: #222;
