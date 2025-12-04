@@ -1,26 +1,42 @@
 // --- CONFIGURATION ---
-const PX_PER_SEC = 30; 
+const PX_PER_SEC = 30;
 const TRACK_COUNT_VIDEO = 3;
 const TRACK_COUNT_AUDIO = 2;
 
+// Maps file extensions to MIME types
+const VIDEO_TYPE_MAP = {
+    mp4: 'video/mp4',
+    mov: 'video/quicktime',
+    webm: 'video/webm',
+    ogg: 'video/ogg',
+    ogv: 'video/ogg',
+    mkv: 'video/x-matroska',
+    avi: 'video/x-msvideo',
+    m4v: 'video/x-m4v'
+};
+
 // --- DOM ELEMENTS ---
 const canvas = document.getElementById('previewCanvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', { alpha: false }); // Optimization: opaque canvas
 const rulerCanvas = document.getElementById('rulerCanvas');
 const rulerCtx = rulerCanvas.getContext('2d');
 const videoPool = document.getElementById('video-pool');
 const endMarker = document.getElementById('endMarker');
-const btnExport = document.getElementById('btnExport'); // Reference for UI updates
+const btnExport = document.getElementById('btnExport');
+const videoSupportProbe = document.createElement('video');
 
 // --- STATE ---
 const appState = {
     currentTime: 0,
-    projectDuration: 30, 
-    containerWidth: 60, 
+    projectDuration: 30,
+    containerWidth: 60,
+    resolution: { width: canvas.width, height: canvas.height },
     isPlaying: false,
-    isExporting: false, // NEW: Track export state
+    isExporting: false,
+    playbackStartTime: 0, // When playback started (Audio Time)
+    playbackStartOffset: 0, // Where in the timeline playback started
     selectedClip: null,
-    tracks: [], 
+    tracks: [],
     dragging: null
 };
 
@@ -31,39 +47,75 @@ let activeAudioNodes = [];
 // --- INITIALIZATION ---
 function init() {
     appState.tracks = [];
+    // Initialize tracks structure
     for(let i=0; i<TRACK_COUNT_VIDEO; i++) appState.tracks.push({ type: 'video', clips: [] });
     for(let i=0; i<TRACK_COUNT_AUDIO; i++) appState.tracks.push({ type: 'audio', clips: [] });
 
     renderTimelineTracks();
-    refreshTimeline(); 
-    loop();
+    refreshTimeline();
+    initResolutionControls();
+    
+    // Start the render loop
+    requestAnimationFrame(loop);
 }
 
 // --- FILE UPLOAD ---
+const getVideoMimeType = (file) => {
+    if(file.type) return file.type;
+    const parts = file.name.split('.');
+    const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+    return VIDEO_TYPE_MAP[ext] || '';
+};
+
+const buildVideoElement = async (file) => {
+    const vid = document.createElement('video');
+    vid.src = URL.createObjectURL(file);
+    vid.muted = true; // Essential for allowing autoplay policies
+    vid.preload = "auto";
+    vid.crossOrigin = "anonymous";
+    vid.playsInline = true;
+
+    const loaded = await new Promise(res => {
+        vid.onloadedmetadata = () => res(true);
+        vid.onerror = () => res(false);
+    });
+
+    return loaded ? vid : null;
+};
+
 document.getElementById('inpVideo').onchange = async (e) => {
     const files = Array.from(e.target.files);
-    e.target.value = null; 
+    e.target.value = null;
+
     for(let file of files) {
-        const vid = document.createElement('video');
-        vid.src = URL.createObjectURL(file);
-        vid.muted = true; vid.preload = "auto";
-        // Important: set crossOrigin to anonymous to avoid tainting canvas during export
-        vid.crossOrigin = "anonymous"; 
+        const vid = await buildVideoElement(file);
+        if(!vid) {
+            console.error(`Failed to load ${file.name}`);
+            continue;
+        }
         videoPool.appendChild(vid);
-        await new Promise(r => { vid.onloadedmetadata = () => r(); vid.onerror = () => r(); });
-        
+
         const clip = {
             id: 'c' + Math.random().toString(36).substr(2, 5),
-            type: 'video', file: file, videoElement: vid,
-            duration: vid.duration || 10, sourceDuration: vid.duration || 10,
-            start: 0, offset: 0, opacity: 1, filter: 'none'
+            type: 'video', 
+            file: file, 
+            videoElement: vid,
+            duration: vid.duration || 10, 
+            sourceDuration: vid.duration || 10,
+            start: 0, 
+            offset: 0, 
+            opacity: 1, 
+            filter: 'none'
         };
+
+        // Add to first available spot on Track 3 (default video track)
         const track = appState.tracks[2]; 
         const lastClip = track.clips[track.clips.length-1];
         clip.start = lastClip ? lastClip.start + lastClip.duration : 0;
         track.clips.push(clip);
     }
     refreshTimeline();
+    drawPreview();
 };
 
 document.getElementById('inpAudio').onchange = async (e) => {
@@ -74,9 +126,14 @@ document.getElementById('inpAudio').onchange = async (e) => {
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
         const clip = {
             id: 'c' + Math.random().toString(36).substr(2, 5),
-            type: 'audio', file: file, buffer: audioBuffer,
-            duration: audioBuffer.duration, sourceDuration: audioBuffer.duration,
-            start: 0, offset: 0, volume: 1
+            type: 'audio', 
+            file: file, 
+            buffer: audioBuffer,
+            duration: audioBuffer.duration, 
+            sourceDuration: audioBuffer.duration,
+            start: 0, 
+            offset: 0, 
+            volume: 1
         };
         const track = appState.tracks[3];
         const lastClip = track.clips[track.clips.length-1];
@@ -86,7 +143,7 @@ document.getElementById('inpAudio').onchange = async (e) => {
     refreshTimeline();
 };
 
-// --- DOM RENDERING ---
+// --- DOM RENDERING (TIMELINE) ---
 function renderTimelineTracks() {
     const container = document.getElementById('tracksContainer');
     container.innerHTML = '';
@@ -106,6 +163,7 @@ function createTrackDiv(container, index, label) {
 function refreshTimeline() {
     if(appState.dragging && appState.dragging.action !== 'move-marker') return;
 
+    // Calculate container width based on content
     let maxClipTime = 0;
     appState.tracks.forEach(t => t.clips.forEach(c => maxClipTime = Math.max(maxClipTime, c.start + c.duration)));
     appState.containerWidth = Math.max(maxClipTime + 10, appState.projectDuration + 10, 60);
@@ -118,6 +176,7 @@ function refreshTimeline() {
 
     if(appState.dragging && appState.dragging.action === 'move-marker') return;
 
+    // Redraw Clips
     document.querySelectorAll('.clip').forEach(e => e.remove());
     appState.tracks.forEach((track, trackIdx) => {
         const trackDiv = document.querySelector(`.track[data-id="${trackIdx}"]`);
@@ -127,7 +186,14 @@ function refreshTimeline() {
             if(appState.selectedClip && appState.selectedClip.id === clip.id) el.classList.add('selected');
             el.style.left = (clip.start * PX_PER_SEC) + 'px';
             el.style.width = (clip.duration * PX_PER_SEC) + 'px';
-            el.innerHTML = `<div class="trim-handle trim-l" data-action="trim-l"></div><div class="clip-name">${clip.file.name}</div><div class="trim-handle trim-r" data-action="trim-r"></div>`;
+            
+            // HTML Structure for handles
+            el.innerHTML = `
+                <div class="trim-handle trim-l" data-action="trim-l"></div>
+                <div class="clip-name">${clip.file.name}</div>
+                <div class="trim-handle trim-r" data-action="trim-r"></div>
+            `;
+            
             el.onmousedown = (e) => handleClipMouseDown(e, clip, trackIdx, el);
             trackDiv.appendChild(el);
         });
@@ -136,11 +202,14 @@ function refreshTimeline() {
 
 function updateRuler() {
     const width = appState.containerWidth * PX_PER_SEC;
-    rulerCanvas.width = width;
-    rulerCanvas.height = 30;
+    if(rulerCanvas.width !== width) rulerCanvas.width = width; // Only resize if needed
+    
     const rc = rulerCtx;
-    rc.fillStyle = '#222'; rc.fillRect(0,0,width,30);
-    rc.strokeStyle = '#555'; rc.fillStyle = '#888'; rc.font = '10px monospace';
+    rc.fillStyle = '#222'; 
+    rc.fillRect(0,0,width,30);
+    rc.strokeStyle = '#555'; 
+    rc.fillStyle = '#888'; 
+    rc.font = '10px monospace';
     
     for(let i=0; i<width; i+=PX_PER_SEC) {
         if((i/PX_PER_SEC)%5 === 0) {
@@ -152,7 +221,7 @@ function updateRuler() {
     }
 }
 
-// --- INTERACTION LOGIC ---
+// --- INTERACTION ---
 endMarker.onmousedown = (e) => {
     e.stopPropagation(); 
     appState.dragging = { action: 'move-marker', startX: e.clientX, originalTime: appState.projectDuration };
@@ -193,6 +262,8 @@ function onMouseMove(e) {
     if(d.action === 'move') {
         const newStart = Math.max(0, d.originalStart + deltaSec);
         d.domElement.style.left = (newStart * PX_PER_SEC) + 'px';
+        
+        // Handle track jumping
         const hoveredEl = document.elementFromPoint(e.clientX, e.clientY);
         const trackDiv = hoveredEl ? hoveredEl.closest('.track') : null;
         if(trackDiv) {
@@ -254,66 +325,76 @@ function onMouseUp(e) {
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
     refreshTimeline();
-    drawPreview();
+    drawPreview(true); // Force seek update
 }
 
 // --- PLAYBACK ENGINE ---
 function loop() {
     if(appState.isPlaying) {
-        // Render Audio chunks are handled by WebAudio scheduler, 
-        // we just update UI time here.
-        appState.currentTime += 0.033; // ~30FPS
-        
+        // Calculate current time based on AudioContext for tighter sync
+        const audioTime = audioCtx.currentTime;
+        appState.currentTime = appState.playbackStartOffset + (audioTime - appState.playbackStartTime);
+
+        // Check for End
         if(appState.currentTime >= appState.projectDuration) {
-            // STOP at End
             if(appState.isExporting) {
-                // Export logic handles the stop
+                // Let export logic handle stop
             } else {
-                appState.currentTime = 0; // Loop in editor
-                startAudio();
+                pausePlayback();
+                appState.currentTime = 0; // Reset to start
             }
         }
         
+        // Auto-Scroll Timeline
         const scroll = document.getElementById('timelineScroll');
-        if(appState.currentTime * PX_PER_SEC > scroll.scrollLeft + scroll.clientWidth) {
-            scroll.scrollLeft = (appState.currentTime * PX_PER_SEC) - 50;
+        const playheadPx = appState.currentTime * PX_PER_SEC;
+        if(playheadPx > scroll.scrollLeft + scroll.clientWidth || playheadPx < scroll.scrollLeft) {
+            scroll.scrollLeft = playheadPx - 50;
         }
     }
+
+    // Always draw (handling pauses and seeks inside)
     drawPreview();
     requestAnimationFrame(loop);
 }
 
 // --- AUDIO LOGIC ---
 function stopAudio() {
-    activeAudioNodes.forEach(n => { try { n.stop(); } catch(e){} });
+    activeAudioNodes.forEach(n => { 
+        try { n.stop(); n.disconnect(); } catch(e){} 
+    });
     activeAudioNodes = [];
 }
 
-// NEW: Accepts a specific output destination (for export)
-function startAudio(outputDestination = null) {
-    stopAudio();
+function startPlayback(outputDestination = null) {
     if(audioCtx.state === 'suspended') audioCtx.resume();
-    const now = audioCtx.currentTime;
     
-    // Default to speakers if not exporting
+    // Set sync anchor
+    appState.playbackStartTime = audioCtx.currentTime;
+    appState.playbackStartOffset = appState.currentTime;
+    
+    stopAudio();
     const finalDest = outputDestination || audioCtx.destination;
 
+    // Schedule Audio
     for(let i=TRACK_COUNT_VIDEO; i<appState.tracks.length; i++) {
         appState.tracks[i].clips.forEach(clip => {
-            // Check overlaps
             const clipEnd = clip.start + clip.duration;
+            
+            // Only schedule if it hasn't finished yet
             if(clipEnd > appState.currentTime && clip.start < appState.projectDuration) {
                 
                 let startOffset = clip.offset;
-                let startTime = now;
+                let startTime = appState.playbackStartTime;
                 
+                // Calculate relative start times
                 if(clip.start > appState.currentTime) {
                     startTime += (clip.start - appState.currentTime);
                 } else {
                     startOffset += (appState.currentTime - clip.start);
                 }
                 
-                // Cut off if exceeds project duration
+                // Duration remaining
                 let dur = clip.duration - (startOffset - clip.offset);
                 const timeUntilProjectEnd = appState.projectDuration - Math.max(clip.start, appState.currentTime);
                 dur = Math.min(dur, timeUntilProjectEnd);
@@ -325,7 +406,6 @@ function startAudio(outputDestination = null) {
                     gain.gain.value = clip.volume;
                     
                     src.connect(gain);
-                    // CONNECT TO SPEAKERS OR EXPORT STREAM
                     gain.connect(finalDest);
                     
                     try {
@@ -336,89 +416,187 @@ function startAudio(outputDestination = null) {
             }
         });
     }
+
+    appState.isPlaying = true;
+    document.getElementById('playPause').innerText = "❚❚";
 }
 
+function pausePlayback() {
+    appState.isPlaying = false;
+    stopAudio();
+    // Stop all video elements specifically
+    appState.tracks.forEach(t => {
+        if(t.type === 'video') t.clips.forEach(c => c.videoElement.pause());
+    });
+    document.getElementById('playPause').innerText = "▶";
+}
+
+// --- CONTROLS ---
 document.getElementById('playPause').onclick = () => {
-    appState.isPlaying = !appState.isPlaying;
-    if(appState.isPlaying) {
-        document.getElementById('playPause').innerText = "❚❚";
-        startAudio();
-    } else {
-        document.getElementById('playPause').innerText = "▶";
-        stopAudio();
-    }
+    if(appState.isPlaying) pausePlayback();
+    else startPlayback();
 };
 
 document.getElementById('toStart').onclick = () => {
-    appState.isPlaying = false;
+    pausePlayback();
     appState.currentTime = 0;
-    stopAudio();
-    document.getElementById('playPause').innerText = "▶";
-    drawPreview();
+    drawPreview(true); // Force seek
 };
 
 document.getElementById('timelineScroll').addEventListener('mousedown', (e) => {
     if(e.target.id === 'endMarker') return;
     if(e.target.className === 'tracks-scroll' || e.target.className === 'track') {
         const r = document.getElementById('tracksContainer').getBoundingClientRect();
-        appState.currentTime = Math.max(0, (e.clientX - r.left) / PX_PER_SEC);
-        if(appState.isPlaying) startAudio();
-        drawPreview();
+        const clickedTime = Math.max(0, (e.clientX - r.left) / PX_PER_SEC);
+        
+        appState.currentTime = clickedTime;
+        
+        if(appState.isPlaying) {
+            startPlayback(); // Resync audio
+        }
+        drawPreview(true); // Force seek
     }
 });
 
 // --- RENDER VISUALS ---
-function drawPreview() {
+function drawPreview(forceSeek = false) {
+    // 1. Clear Canvas
     ctx.fillStyle = '#000';
     ctx.fillRect(0,0, canvas.width, canvas.height);
     
-    for(let i=0; i<TRACK_COUNT_VIDEO; i++) {
-        const track = appState.tracks[i];
-        const clip = track.clips.find(c => appState.currentTime >= c.start && appState.currentTime < c.start + c.duration);
-        if(clip) {
-            const vid = clip.videoElement;
-            const vidTime = (appState.currentTime - clip.start) + clip.offset;
-            
-            // Sync logic
-            if(!appState.isExporting && Math.abs(vid.currentTime - vidTime) > 0.2) {
-                vid.currentTime = vidTime;
-            } else if (appState.isExporting) {
-                // Precise seek for export
-                vid.currentTime = vidTime;
-            }
-            
-            ctx.save();
-            ctx.globalAlpha = clip.opacity;
-            let f = '';
-            if(clip.filter === 'bw') f += 'grayscale(100%) ';
-            if(clip.filter === '35mm') f += 'sepia(40%) contrast(1.2) ';
-            if(clip.filter === 'invert') f += 'invert(100%) ';
-            if(clip.filter === 'vhs') f += 'saturate(2) contrast(1.3) hue-rotate(-10deg) ';
-            ctx.filter = f;
-
-            const scale = Math.min(canvas.width / vid.videoWidth, canvas.height / vid.videoHeight);
-            const w = vid.videoWidth * scale;
-            const h = vid.videoHeight * scale;
-            ctx.drawImage(vid, (canvas.width-w)/2, (canvas.height-h)/2, w, h);
-            ctx.restore();
-        }
-    }
+    // 2. Render Playhead & Time
     document.getElementById('playhead').style.left = (appState.currentTime * PX_PER_SEC) + 'px';
     document.getElementById('timecode').innerText = formatTime(appState.currentTime);
+
+    // 3. Render Video Tracks
+    // Sort tracks by ID (lower ID = lower layer, but usually top track covers bottom)
+    // Here we iterate 0..2. Track 2 is top layer in UI? Usually higher index = top layer.
+    for(let i=0; i<TRACK_COUNT_VIDEO; i++) {
+        const track = appState.tracks[i];
+        
+        // Find clip under playhead
+        const clip = track.clips.find(c => 
+            appState.currentTime >= c.start && 
+            appState.currentTime < c.start + c.duration
+        );
+
+        if(clip) {
+            const vid = clip.videoElement;
+            const targetTime = (appState.currentTime - clip.start) + clip.offset;
+            
+            // --- SMART SYNC LOGIC (The Anti-Choppy Fix) ---
+            if(appState.isPlaying && !forceSeek) {
+                // If playing, only seek if drift is bad (> 0.25s)
+                if(Math.abs(vid.currentTime - targetTime) > 0.25) {
+                    vid.currentTime = targetTime;
+                }
+                // Ensure it's moving
+                if(vid.paused) vid.play().catch(()=>{}); 
+            } else {
+                // Paused or Scrubbing: Force exact frame
+                vid.pause();
+                // Avoid redundant setting to save CPU
+                if(Math.abs(vid.currentTime - targetTime) > 0.05) {
+                    vid.currentTime = targetTime;
+                }
+            }
+
+            // Draw to canvas
+            if(vid.readyState >= 2) { // HAVE_CURRENT_DATA
+                ctx.save();
+                ctx.globalAlpha = clip.opacity;
+                
+                // Filters (Optimized string concat)
+                if(clip.filter !== 'none') {
+                    let f = '';
+                    if(clip.filter === 'bw') f = 'grayscale(100%)';
+                    else if(clip.filter === '35mm') f = 'sepia(40%) contrast(1.2)';
+                    else if(clip.filter === 'invert') f = 'invert(100%)';
+                    else if(clip.filter === 'vhs') f = 'saturate(2) contrast(1.3) hue-rotate(-10deg)';
+                    ctx.filter = f;
+                }
+
+                // Aspect Fit
+                const scale = Math.min(canvas.width / vid.videoWidth, canvas.height / vid.videoHeight);
+                const w = vid.videoWidth * scale;
+                const h = vid.videoHeight * scale;
+                const x = (canvas.width - w) / 2;
+                const y = (canvas.height - h) / 2;
+
+                ctx.drawImage(vid, x, y, w, h);
+                ctx.restore();
+            }
+        } else {
+            // Ensure unused clips are paused to save CPU
+            track.clips.forEach(c => {
+                if(!c.videoElement.paused) c.videoElement.pause();
+            });
+        }
+    }
 }
 
-// --- PROPERTIES & EXPORT ---
+// --- PROJECT SETTINGS ---
+function initResolutionControls() {
+    const presetSelect = document.getElementById('resolutionPreset');
+    const widthInput = document.getElementById('resolutionWidth');
+    const heightInput = document.getElementById('resolutionHeight');
+    const applyBtn = document.getElementById('applyResolution');
+
+    const presets = {
+        "480p": { width: 854, height: 480 },
+        "720p": { width: 1280, height: 720 },
+        "1080p": { width: 1920, height: 1080 },
+        "4k": { width: 3840, height: 2160 },
+        "square": { width: 1080, height: 1080 }
+    };
+
+    const setInputs = ({ width, height }) => {
+        widthInput.value = Math.round(width);
+        heightInput.value = Math.round(height);
+    };
+
+    presetSelect.addEventListener('change', () => {
+        const chosen = presets[presetSelect.value];
+        if(chosen) setInputs(chosen);
+    });
+
+    applyBtn.addEventListener('click', () => {
+        const width = Math.max(320, parseInt(widthInput.value, 10) || appState.resolution.width);
+        const height = Math.max(240, parseInt(heightInput.value, 10) || appState.resolution.height);
+        
+        appState.resolution = { width, height };
+        canvas.width = width;
+        canvas.height = height;
+        drawPreview(true);
+    });
+
+    setInputs(appState.resolution);
+}
+
+// --- PROPERTIES ---
 function updatePropertiesPanel() {
     const c = appState.selectedClip;
     if(!c) { document.getElementById('propertiesPanel').classList.add('hidden'); return; }
     document.getElementById('propertiesPanel').classList.remove('hidden');
-    document.getElementById('propVolume').value = c.volume || 1;
-    document.getElementById('propOpacity').value = c.opacity || 1;
+    document.getElementById('propVolume').value = c.volume !== undefined ? c.volume : 1;
+    document.getElementById('propOpacity').value = c.opacity !== undefined ? c.opacity : 1;
     document.getElementById('propFilter').value = c.filter || 'none';
 }
-document.getElementById('propOpacity').oninput = (e) => { if(appState.selectedClip) appState.selectedClip.opacity = e.target.value; };
-document.getElementById('propVolume').oninput = (e) => { if(appState.selectedClip) appState.selectedClip.volume = e.target.value; };
-document.getElementById('propFilter').onchange = (e) => { if(appState.selectedClip) appState.selectedClip.filter = e.target.value; };
+document.getElementById('propOpacity').oninput = (e) => { 
+    if(appState.selectedClip && appState.selectedClip.type === 'video') {
+        appState.selectedClip.opacity = parseFloat(e.target.value);
+        drawPreview(true);
+    }
+};
+document.getElementById('propVolume').oninput = (e) => { 
+    if(appState.selectedClip) appState.selectedClip.volume = parseFloat(e.target.value); 
+};
+document.getElementById('propFilter').onchange = (e) => { 
+    if(appState.selectedClip && appState.selectedClip.type === 'video') {
+        appState.selectedClip.filter = e.target.value;
+        drawPreview(true);
+    }
+};
 document.getElementById('btnDelete').onclick = () => {
     if(appState.selectedClip) {
         appState.tracks.forEach(t => {
@@ -426,43 +604,44 @@ document.getElementById('btnDelete').onclick = () => {
             if(i > -1) t.clips.splice(i, 1);
         });
         appState.selectedClip = null;
+        updatePropertiesPanel();
         refreshTimeline();
+        drawPreview(true);
     }
 };
 
-// --- ROBUST EXPORT LOGIC ---
+// --- EXPORT ---
 btnExport.onclick = () => {
-    // 1. Reset State
-    appState.isPlaying = false;
-    appState.isExporting = true;
-    stopAudio();
+    if(appState.isExporting) return;
+
+    // 1. Reset
+    pausePlayback();
     appState.currentTime = 0;
+    appState.isExporting = true;
     
-    // 2. Select Supported Mime Type
+    // 2. Codec Selection
     const types = [
-        "video/mp4", // Attempt MP4 (Safari)
-        "video/webm;codecs=h264",
         "video/webm;codecs=vp9", 
-        "video/webm" // Fallback
+        "video/webm;codecs=vp8", 
+        "video/webm",
+        "video/mp4" 
     ];
-    let selectedType = types.find(t => MediaRecorder.isTypeSupported(t)) || "video/webm";
+    let selectedType = types.find(t => MediaRecorder.isTypeSupported(t)) || "";
+    if(!selectedType) { alert("Your browser doesn't support MediaRecorder export."); return; }
+
+    btnExport.innerText = "Rendering...";
     
-    // Determine extension based on selected type
-    let ext = selectedType.includes("mp4") ? "mp4" : "webm";
+    // 3. Setup Stream
+    const stream = canvas.captureStream(30); // Request 30FPS stream from canvas
+    const audioDest = audioCtx.createMediaStreamDestination();
     
-    // 3. Setup Recorder
-    const stream = canvas.captureStream(30); // 30 FPS
-    const dest = audioCtx.createMediaStreamDestination(); // Audio sink
-    
-    // Combine Video + Audio
-    const combinedStream = new MediaStream([
-        ...stream.getVideoTracks(),
-        ...dest.stream.getAudioTracks()
-    ]);
+    // Combine
+    const combinedTracks = [...stream.getVideoTracks(), ...audioDest.stream.getAudioTracks()];
+    const combinedStream = new MediaStream(combinedTracks);
     
     const recorder = new MediaRecorder(combinedStream, {
         mimeType: selectedType,
-        videoBitsPerSecond: 8000000 // High Quality
+        videoBitsPerSecond: 5000000 // 5 Mbps
     });
     
     const chunks = [];
@@ -470,27 +649,22 @@ btnExport.onclick = () => {
     
     recorder.onstop = () => {
         appState.isExporting = false;
-        appState.isPlaying = false;
-        stopAudio();
+        pausePlayback();
         btnExport.innerText = "Export Project";
-        document.getElementById('playPause').innerText = "▶";
         
         const blob = new Blob(chunks, { type: selectedType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `my_movie.${ext}`;
+        a.download = `exported_video_${Date.now()}.webm`; // Extension mostly webm
         a.click();
     };
     
-    // 4. Start
-    btnExport.innerText = "Rendering...";
+    // 4. Begin
     recorder.start();
+    startPlayback(audioDest); // Route audio to recorder
     
-    // 5. Playback Logic
-    appState.isPlaying = true;
-    startAudio(dest); // ROUTE AUDIO TO RECORDER, NOT SPEAKERS
-    
+    // 5. Watcher
     const checkEnd = setInterval(() => {
         if(!appState.isExporting || appState.currentTime >= appState.projectDuration) {
             recorder.stop();
@@ -501,4 +675,5 @@ btnExport.onclick = () => {
 
 const formatTime = t => new Date(t*1000).toISOString().substr(14, 5);
 
+// Start
 init();
