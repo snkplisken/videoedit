@@ -854,12 +854,38 @@ function drawPreview(forceSeek = false) {
 
                 if(appState.selectedClip && appState.selectedClip.id === clip.id) {
                     ctx.strokeStyle = '#5af0ff';
-                    ctx.lineWidth = 2;
-                    ctx.setLineDash([5,4]);
+                    ctx.lineWidth = 2.5;
+                    ctx.setLineDash([6,5]);
                     ctx.strokeRect(x, y, w, h);
                     ctx.setLineDash([]);
+
+                    // Easier-to-hit transform handles
+                    const handleSize = 22;
+                    const handleRadius = handleSize / 2;
+                    const handleX = x + w + 6 - handleSize;
+                    const handleY = y + h + 6 - handleSize;
                     ctx.fillStyle = '#5af0ff';
-                    ctx.fillRect(x + w - 10, y + h - 10, 16, 16);
+                    ctx.strokeStyle = '#0b2730';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.roundRect(handleX, handleY, handleSize, handleSize, 4);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.strokeStyle = '#0b2730';
+                    ctx.beginPath();
+                    ctx.moveTo(handleX + 6, handleY + handleRadius);
+                    ctx.lineTo(handleX + handleSize - 6, handleY + handleRadius);
+                    ctx.moveTo(handleX + handleRadius, handleY + 6);
+                    ctx.lineTo(handleX + handleRadius, handleY + handleSize - 6);
+                    ctx.stroke();
+
+                    // Corner guides for extra touch targets
+                    const corner = 10;
+                    ctx.fillStyle = 'rgba(90, 240, 255, 0.4)';
+                    ctx.fillRect(x - corner, y - corner, corner * 2, corner * 2);
+                    ctx.fillRect(x + w - corner, y - corner, corner * 2, corner * 2);
+                    ctx.fillRect(x - corner, y + h - corner, corner * 2, corner * 2);
+
                     appState.currentVisualFrame = { clipId: clip.id, rect: { x, y, w, h } };
                 }
                 ctx.restore();
@@ -901,12 +927,33 @@ const getCanvasPoint = (e) => {
 const startCanvasTransform = (e) => {
     if(!appState.selectedClip || !appState.currentVisualFrame || appState.currentVisualFrame.clipId !== appState.selectedClip.id) return;
     if(!appState.selectedClip.transform) appState.selectedClip.transform = { x: 0, y: 0, scale: 1 };
+
+    if(e.touches && e.touches.length === 2) {
+        const rect = appState.currentVisualFrame.rect;
+        const touchA = getCanvasPoint({ ...e, touches: [e.touches[0]] });
+        const touchB = getCanvasPoint({ ...e, touches: [e.touches[1]] });
+        const center = { x: (touchA.x + touchB.x) / 2, y: (touchA.y + touchB.y) / 2 };
+        if(center.x < rect.x || center.x > rect.x + rect.w || center.y < rect.y || center.y > rect.y + rect.h) return;
+        const startDist = Math.hypot(touchB.x - touchA.x, touchB.y - touchA.y);
+        appState.canvasDrag = {
+            mode: 'pinch',
+            startDist,
+            origin: { ...appState.selectedClip.transform },
+            frame: rect
+        };
+        if(e.cancelable) e.preventDefault();
+        addCanvasDragListeners();
+        return;
+    }
+
     const pt = getCanvasPoint(e);
     const rect = appState.currentVisualFrame.rect;
-    if(pt.x < rect.x || pt.x > rect.x + rect.w || pt.y < rect.y || pt.y > rect.y + rect.h) return;
+    const pad = 28;
+    const within = pt.x >= rect.x - pad && pt.x <= rect.x + rect.w + pad && pt.y >= rect.y - pad && pt.y <= rect.y + rect.h + pad;
+    if(!within) return;
 
     if(e.cancelable) e.preventDefault();
-    const nearHandle = (pt.x >= rect.x + rect.w - 20) && (pt.y >= rect.y + rect.h - 20);
+    const nearHandle = (pt.x >= rect.x + rect.w - pad && pt.x <= rect.x + rect.w + pad) && (pt.y >= rect.y + rect.h - pad && pt.y <= rect.y + rect.h + pad);
     appState.canvasDrag = {
         mode: nearHandle ? 'scale' : 'move',
         start: pt,
@@ -920,19 +967,29 @@ function onCanvasPointerMove(e) {
     if(!appState.canvasDrag) return;
     if(e.cancelable) e.preventDefault();
     const drag = appState.canvasDrag;
-    const pt = getCanvasPoint(e);
-    const dx = pt.x - drag.start.x;
-    const dy = pt.y - drag.start.y;
     const clip = appState.selectedClip;
     if(!clip.transform) clip.transform = { x: 0, y: 0, scale: 1 };
 
-    if(drag.mode === 'move') {
-        clip.transform.x = drag.origin.x + dx;
-        clip.transform.y = drag.origin.y + dy;
+    if(drag.mode === 'pinch') {
+        if(!e.touches || e.touches.length < 2) return;
+        const touchA = getCanvasPoint({ ...e, touches: [e.touches[0]] });
+        const touchB = getCanvasPoint({ ...e, touches: [e.touches[1]] });
+        const dist = Math.hypot(touchB.x - touchA.x, touchB.y - touchA.y);
+        const factor = dist / drag.startDist;
+        clip.transform.scale = Math.max(0.1, Math.min(4, drag.origin.scale * factor));
     } else {
-        const maxDelta = Math.max(dx, dy);
-        const base = Math.max(drag.frame.w, drag.frame.h);
-        clip.transform.scale = Math.max(0.1, Math.min(4, drag.origin.scale + (maxDelta / base)));
+        const pt = getCanvasPoint(e);
+        const dx = pt.x - drag.start.x;
+        const dy = pt.y - drag.start.y;
+
+        if(drag.mode === 'move') {
+            clip.transform.x = drag.origin.x + dx;
+            clip.transform.y = drag.origin.y + dy;
+        } else {
+            const maxDelta = Math.max(dx, dy);
+            const base = Math.max(drag.frame.w, drag.frame.h);
+            clip.transform.scale = Math.max(0.1, Math.min(4, drag.origin.scale + (maxDelta / base)));
+        }
     }
     drawPreview(true);
 }
