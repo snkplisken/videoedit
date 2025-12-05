@@ -68,6 +68,19 @@ const clampCurrentTimeWithinRange = () => {
     if(appState.currentTime > appState.projectDuration) appState.currentTime = appState.projectDuration;
 };
 
+const clampScaleValue = (v) => Math.max(0.1, Math.min(4, v));
+
+const normalizeTransform = (clip) => {
+    if(!clip.transform) clip.transform = {};
+    if(typeof clip.transform.x !== 'number') clip.transform.x = 0;
+    if(typeof clip.transform.y !== 'number') clip.transform.y = 0;
+    const fallback = typeof clip.transform.scale === 'number' ? clip.transform.scale : 1;
+    if(typeof clip.transform.scaleX !== 'number') clip.transform.scaleX = fallback;
+    if(typeof clip.transform.scaleY !== 'number') clip.transform.scaleY = fallback;
+    const average = (clip.transform.scaleX + clip.transform.scaleY) / 2;
+    clip.transform.scale = typeof clip.transform.scale === 'number' ? clip.transform.scale : average;
+};
+
 // --- STATE ---
 const appState = {
     currentTime: 0,
@@ -169,7 +182,7 @@ document.getElementById('inpVideo').onchange = async (e) => {
             offset: 0,
             opacity: 1,
             filter: 'none',
-            transform: { x: 0, y: 0, scale: 1 }
+            transform: { x: 0, y: 0, scale: 1, scaleX: 1, scaleY: 1 }
         };
 
         // Add to first available spot on Track 3 (default video track)
@@ -201,7 +214,7 @@ imageInput.onchange = async (e) => {
             offset: 0,
             opacity: 1,
             filter: 'none',
-            transform: { x: 0, y: 0, scale: 1 }
+            transform: { x: 0, y: 0, scale: 1, scaleX: 1, scaleY: 1 }
         };
 
         const track = appState.tracks[2];
@@ -842,11 +855,13 @@ function drawPreview(forceSeek = false) {
                     ctx.filter = f;
                 }
 
-                const transform = clip.transform || { x: 0, y: 0, scale: 1 };
+                normalizeTransform(clip);
+                const transform = clip.transform;
                 const baseScale = Math.min(canvas.width / naturalW, canvas.height / naturalH);
-                const finalScale = baseScale * Math.max(0.1, transform.scale || 1);
-                const w = naturalW * finalScale;
-                const h = naturalH * finalScale;
+                const finalScaleX = baseScale * clampScaleValue(transform.scaleX);
+                const finalScaleY = baseScale * clampScaleValue(transform.scaleY);
+                const w = naturalW * finalScaleX;
+                const h = naturalH * finalScaleY;
                 const x = (canvas.width - w) / 2 + (transform.x || 0);
                 const y = (canvas.height - h) / 2 + (transform.y || 0);
 
@@ -924,9 +939,22 @@ const getCanvasPoint = (e) => {
     };
 };
 
+const detectHandle = (pt, rect, pad) => {
+    const inLeft = pt.x >= rect.x - pad && pt.x <= rect.x + pad;
+    const inRight = pt.x >= rect.x + rect.w - pad && pt.x <= rect.x + rect.w + pad;
+    const inTop = pt.y >= rect.y - pad && pt.y <= rect.y + pad;
+    const inBottom = pt.y >= rect.y + rect.h - pad && pt.y <= rect.y + rect.h + pad;
+
+    if(inLeft && inBottom) return 'bottomLeft';
+    if(inRight && inBottom) return 'bottomRight';
+    if(inLeft && inTop) return 'topLeft';
+    if(inRight && inTop) return 'topRight';
+    return null;
+};
+
 const startCanvasTransform = (e) => {
     if(!appState.selectedClip || !appState.currentVisualFrame || appState.currentVisualFrame.clipId !== appState.selectedClip.id) return;
-    if(!appState.selectedClip.transform) appState.selectedClip.transform = { x: 0, y: 0, scale: 1 };
+    normalizeTransform(appState.selectedClip);
 
     if(e.touches && e.touches.length === 2) {
         const rect = appState.currentVisualFrame.rect;
@@ -953,12 +981,13 @@ const startCanvasTransform = (e) => {
     if(!within) return;
 
     if(e.cancelable) e.preventDefault();
-    const nearHandle = (pt.x >= rect.x + rect.w - pad && pt.x <= rect.x + rect.w + pad) && (pt.y >= rect.y + rect.h - pad && pt.y <= rect.y + rect.h + pad);
+    const handle = detectHandle(pt, rect, pad);
     appState.canvasDrag = {
-        mode: nearHandle ? 'scale' : 'move',
+        mode: handle ? 'scale' : 'move',
         start: pt,
         origin: { ...appState.selectedClip.transform },
-        frame: rect
+        frame: rect,
+        handle
     };
     addCanvasDragListeners();
 };
@@ -968,7 +997,7 @@ function onCanvasPointerMove(e) {
     if(e.cancelable) e.preventDefault();
     const drag = appState.canvasDrag;
     const clip = appState.selectedClip;
-    if(!clip.transform) clip.transform = { x: 0, y: 0, scale: 1 };
+    normalizeTransform(clip);
 
     if(drag.mode === 'pinch') {
         if(!e.touches || e.touches.length < 2) return;
@@ -976,7 +1005,11 @@ function onCanvasPointerMove(e) {
         const touchB = getCanvasPoint({ ...e, touches: [e.touches[1]] });
         const dist = Math.hypot(touchB.x - touchA.x, touchB.y - touchA.y);
         const factor = dist / drag.startDist;
-        clip.transform.scale = Math.max(0.1, Math.min(4, drag.origin.scale * factor));
+        const nextScaleX = clampScaleValue((drag.origin.scaleX ?? drag.origin.scale) * factor);
+        const nextScaleY = clampScaleValue((drag.origin.scaleY ?? drag.origin.scale) * factor);
+        clip.transform.scaleX = nextScaleX;
+        clip.transform.scaleY = nextScaleY;
+        clip.transform.scale = (nextScaleX + nextScaleY) / 2;
     } else {
         const pt = getCanvasPoint(e);
         const dx = pt.x - drag.start.x;
@@ -986,9 +1019,26 @@ function onCanvasPointerMove(e) {
             clip.transform.x = drag.origin.x + dx;
             clip.transform.y = drag.origin.y + dy;
         } else {
-            const maxDelta = Math.max(dx, dy);
-            const base = Math.max(drag.frame.w, drag.frame.h);
-            clip.transform.scale = Math.max(0.1, Math.min(4, drag.origin.scale + (maxDelta / base)));
+            const baseScaleX = typeof drag.origin.scaleX === 'number' ? drag.origin.scaleX : drag.origin.scale;
+            const baseScaleY = typeof drag.origin.scaleY === 'number' ? drag.origin.scaleY : drag.origin.scale;
+
+            const deltaX = (drag.handle && drag.handle.includes('left')) ? -dx : dx;
+            const deltaY = (drag.handle && drag.handle.includes('top')) ? -dy : dy;
+
+            if(drag.handle === 'bottomLeft') {
+                const stepX = deltaX / drag.frame.w;
+                const stepY = deltaY / drag.frame.h;
+                const uniform = clampScaleValue((drag.origin.scale ?? baseScaleX) + Math.max(stepX, stepY));
+                clip.transform.scaleX = uniform;
+                clip.transform.scaleY = uniform;
+            } else {
+                const nextScaleX = clampScaleValue(baseScaleX + (deltaX / drag.frame.w));
+                const nextScaleY = clampScaleValue(baseScaleY + (deltaY / drag.frame.h));
+                clip.transform.scaleX = nextScaleX;
+                clip.transform.scaleY = nextScaleY;
+            }
+
+            clip.transform.scale = (clip.transform.scaleX + clip.transform.scaleY) / 2;
         }
     }
     drawPreview(true);
@@ -1113,11 +1163,13 @@ document.getElementById('btnDelete').onclick = () => {
 document.getElementById('btnDuplicate').onclick = async () => {
     const source = appState.selectedClip;
     if(!source) return;
+    normalizeTransform(source);
 
     const track = appState.tracks.find(t => t.clips.includes(source));
     if(!track) return;
 
     let clone = { ...source, transform: { ...source.transform } };
+    normalizeTransform(clone);
     clone.id = 'c' + Math.random().toString(36).substr(2, 5);
     clone.start = snapTime(source.start + source.duration + 0.1);
 

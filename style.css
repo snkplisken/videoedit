@@ -218,12 +218,13 @@ input[type="range"] {
     position: relative; 
 }
 
-canvas#previewCanvas { 
-    background: #111; 
-    max-width: 95%; 
-    max-height: 80%; 
-    box-shadow: 0 0 30px rgba(0,0,0,0.5); 
+canvas#previewCanvas {
+    background: #111;
+    max-width: 95%;
+    max-height: 80%;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
     border: 1px solid #222;
+    touch-action: none;
 }
 
 .transport {
