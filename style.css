@@ -13,15 +13,16 @@
 }
 
 /* Global Reset */
-body { 
-    margin: 0; 
-    background: var(--bg-main); 
-    color: var(--text); 
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-    height: 100vh; 
-    display: flex; 
-    flex-direction: column; 
-    overflow: hidden; 
+body {
+    margin: 0;
+    background: var(--bg-main);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: hidden;
     user-select: none; /* Prevents text highlighting while dragging */
 }
 
@@ -37,14 +38,14 @@ body {
 }
 
 /* --- HEADER --- */
-header { 
-    height: 50px; 
-    background: #111; 
-    border-bottom: 1px solid #333; 
-    display: flex; 
-    align-items: center; 
-    justify-content: space-between; 
-    padding: 0 20px; 
+header {
+    height: 50px;
+    background: #111;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 20px;
 }
 
 .logo { 
@@ -58,15 +59,15 @@ header {
 }
 
 /* --- WORKSPACE (Middle Section) --- */
-.workspace { 
-    display: flex; 
-    height: 55%; 
+.workspace {
+    display: flex;
+    height: 55%;
     min-height: 300px;
 }
 
 /* Left Sidebar */
-.sidebar { 
-    width: 300px; 
+.sidebar {
+    width: 300px;
     background: var(--bg-sec); 
     border-right: 1px solid #333; 
     padding: 20px; 
@@ -111,12 +112,21 @@ header {
 }
 
 /* Properties Panel */
-.properties { 
-    background: #222; 
-    padding: 15px; 
-    border-radius: 6px; 
-    border: 1px solid #444; 
-    margin-top: 10px; 
+.properties {
+    background: #222;
+    padding: 15px;
+    border-radius: 6px;
+    border: 1px solid #444;
+    margin-top: 10px;
+}
+
+.button-row {
+    display: flex;
+    gap: 10px;
+}
+
+.button-row button {
+    flex: 1;
 }
 
 .prop-row { 
@@ -184,6 +194,19 @@ input[type="range"] {
     box-sizing: border-box;
 }
 
+.btn-secondary {
+    background: #444;
+    color: #fff;
+    border: 1px solid #666;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.btn-secondary:hover {
+    background: #555;
+}
+
 /* --- VIEWER (Right Section) --- */
 .viewer { 
     flex: 1; 
@@ -195,25 +218,37 @@ input[type="range"] {
     position: relative; 
 }
 
-canvas#previewCanvas { 
-    background: #111; 
-    max-width: 95%; 
-    max-height: 80%; 
-    box-shadow: 0 0 30px rgba(0,0,0,0.5); 
+canvas#previewCanvas {
+    background: #111;
+    max-width: 95%;
+    max-height: 80%;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
     border: 1px solid #222;
+    touch-action: none;
 }
 
-.transport { 
-    margin-top: 15px; 
-    display: flex; 
-    gap: 15px; 
-    align-items: center; 
+.transport {
+    margin-top: 15px;
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 10px;
 }
 
-.transport button { 
-    background: none; 
-    border: 1px solid #555; 
-    color: #fff; 
+.transport-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.transport button {
+    background: none;
+    border: 1px solid #555;
+    color: #fff;
     cursor: pointer; 
     padding: 5px 10px; 
     border-radius: 4px; 
@@ -223,41 +258,157 @@ canvas#previewCanvas {
     background: #333;
 }
 
-.transport .btn-big { 
-    font-size: 20px; 
-    width: 40px; 
-    border-color: var(--accent); 
-    color: var(--accent); 
+.transport .btn-big {
+    font-size: 20px;
+    width: 40px;
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
-#timecode { 
-    font-family: monospace; 
-    font-size: 14px; 
-    color: #888; 
+#timecode {
+    font-family: monospace;
+    font-size: 14px;
+    color: #888;
+}
+
+.export-btn {
+    white-space: nowrap;
 }
 
 /* --- TIMELINE AREA (Bottom Section) --- */
-.timeline-area { 
-    height: 45%; 
-    background: #1a1a1a; 
-    display: flex; 
-    flex-direction: column; 
-    border-top: 2px solid #000; 
-    position: relative; 
+.timeline-area {
+    height: 45%;
+    background: #1a1a1a;
+    display: flex;
+    flex-direction: column;
+    border-top: 2px solid #000;
+    position: relative;
+    overflow: hidden;
 }
 
-.ruler-container { 
-    height: 25px; 
-    background: #222; 
-    border-bottom: 1px solid #333; 
+.timeline-toolbar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    align-items: start;
+    padding: 8px 12px;
+    gap: 12px;
+    background: #121212;
+    border-bottom: 1px solid #222;
     flex-shrink: 0;
 }
 
-.tracks-scroll { 
-    flex: 1; 
-    overflow: auto; 
-    position: relative; 
-    padding-top: 10px; 
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #bbb;
+    font-size: 12px;
+}
+
+.zoom-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.zoom-buttons button {
+    width: 32px;
+    height: 28px;
+    border: 1px solid #444;
+    background: #222;
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.zoom-buttons button:hover {
+    background: #333;
+}
+
+.zoom-buttons input[type="range"] {
+    width: 140px;
+    accent-color: var(--accent);
+}
+
+.snap-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: #161616;
+    border: 1px solid #222;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #ccc;
+}
+
+.snap-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.snap-size {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.snap-size input {
+    width: 70px;
+}
+
+.range-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: #1e1e1e;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #222;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.05);
+}
+
+.range-inputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+}
+
+.range-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #111;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid #222;
+}
+
+.range-field input {
+    width: 100%;
+    background: #0c0c0c;
+    border: 1px solid #333;
+    color: #f5f5f5;
+    padding: 4px 6px;
+    border-radius: 6px;
+}
+
+.ruler-container {
+    height: 25px;
+    background: #222;
+    border-bottom: 1px solid #333;
+    flex-shrink: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.tracks-scroll {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    position: relative;
+    padding-top: 10px;
 }
 
 /* Tracks */
@@ -410,4 +561,102 @@ canvas#previewCanvas {
 
 #endMarker:hover {
     border-left: 2px solid var(--marker); /* Solid line on hover */
+}
+
+#startMarker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: transparent;
+    border-left: 2px solid #3498db;
+    z-index: 989;
+    cursor: ew-resize;
+}
+
+#startMarker::after {
+    content: 'START';
+    position: absolute;
+    top: 0;
+    left: 2px;
+    background: #3498db;
+    color: white;
+    font-size: 9px;
+    padding: 2px 4px;
+    border-radius: 0 4px 4px 0;
+    font-weight: bold;
+    box-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+/* --- MOBILE OPTIMIZATIONS --- */
+@media (max-width: 900px) {
+    body {
+        overflow-x: hidden;
+        overflow-y: auto;
+        height: auto;
+    }
+
+    header {
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        text-align: center;
+    }
+
+    .workspace {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #333;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+    }
+
+    .properties,
+    .import-buttons,
+    .section-title {
+        grid-column: 1 / -1;
+    }
+
+    .viewer {
+        padding: 10px 0;
+    }
+
+    .transport {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .export-btn {
+        width: 100%;
+        text-align: center;
+    }
+
+    .timeline-area {
+        height: auto;
+        max-height: 55vh;
+    }
+
+    .timeline-toolbar {
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .zoom-buttons input[type="range"] {
+        width: 120px;
+    }
+
+    .tracks-scroll {
+        min-height: 200px;
+    }
+
+    .track {
+        height: 70px;
+    }
 }

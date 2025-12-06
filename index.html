@@ -12,7 +12,6 @@
     <!-- TOP: HEADER -->
     <header>
         <div class="logo">JS-EDITOR <span>PRO</span></div>
-        <button id="btnExport" class="btn-primary">Export Project</button>
     </header>
 
     <!-- MIDDLE: BINS & PREVIEW -->
@@ -21,6 +20,7 @@
             <div class="section-title">Media Import</div>
             <div class="import-buttons">
                 <label class="btn-import">+ Video (MP4/MOV/More)<input type="file" id="inpVideo" accept="video/mp4,video/webm,video/quicktime,video/ogg,video/x-matroska,video/x-msvideo,video/avi,video/*" multiple></label>
+                <label class="btn-import">+ Image (PNG/JPG/SVG)<input type="file" id="inpImage" accept="image/*" multiple></label>
                 <label class="btn-import">+ Audio (MP3)<input type="file" id="inpAudio" accept="audio/*" multiple></label>
             </div>
 
@@ -54,34 +54,80 @@
 
             <div id="propertiesPanel" class="properties hidden">
                 <div class="section-title">Clip Inspector</div>
-                <div class="prop-row"><label>Filter</label><select id="propFilter"><option value="none">Normal</option><option value="bw">B/W Noir</option><option value="35mm">35mm Film</option><option value="invert">Invert</option><option value="vhs">VHS Fuzz</option></select></div>
-                <div class="prop-row"><label>Opacity</label><input type="range" id="propOpacity" min="0" max="1" step="0.01"></div>
+                <div class="prop-row" id="propVideoFilterRow"><label>Filter</label><select id="propFilter"><option value="none">Normal</option><option value="bw">B/W Noir</option><option value="35mm">35mm Film</option><option value="invert">Invert</option><option value="vhs">VHS Fuzz</option></select></div>
+                <div class="prop-row" id="propOpacityRow"><label>Opacity</label><input type="range" id="propOpacity" min="0" max="1" step="0.01"></div>
                 <div class="prop-row"><label>Volume</label><input type="range" id="propVolume" min="0" max="1.5" step="0.1"></div>
-                <div class="prop-row"><button id="btnDelete" class="btn-danger">Delete Clip</button></div>
+                <div class="prop-row hidden" id="propAudioEffectRow"><label>Audio Effect</label><select id="propAudioEffect"><option value="none">None</option><option value="lowpass">Soft Low-Pass</option><option value="highpass">Bright High-Pass</option><option value="echo">Short Echo</option></select></div>
+                <div class="prop-row hidden" id="propFadeInRow"><label>Fade In (s)</label><input type="number" id="propFadeIn" min="0" step="0.1"></div>
+                <div class="prop-row hidden" id="propFadeOutRow"><label>Fade Out (s)</label><input type="number" id="propFadeOut" min="0" step="0.1"></div>
+                <div class="prop-row button-row">
+                    <button id="btnDuplicate" class="btn-secondary">Duplicate Clip</button>
+                    <button id="btnDelete" class="btn-danger">Delete Clip</button>
+                </div>
             </div>
         </div>
 
         <div class="viewer">
             <canvas id="previewCanvas" width="854" height="480"></canvas>
             <div class="transport">
-                <button id="toStart">|&lt;</button>
-                <button id="playPause" class="btn-big">▶</button>
-                <span id="timecode">00:00:00</span>
+                <div class="transport-controls">
+                    <button id="toStart">|&lt;</button>
+                    <button id="playPause" class="btn-big">▶</button>
+                    <span id="timecode">00:00:00</span>
+                </div>
+                <button id="btnExport" class="btn-primary export-btn">Export Project</button>
             </div>
         </div>
     </div>
 
     <!-- BOTTOM: TIMELINE -->
-    <div class="timeline-area">
-        <div class="ruler-container">
-            <canvas id="rulerCanvas"></canvas>
-        </div>
+        <div class="timeline-area">
+            <div class="timeline-toolbar">
+                <div class="zoom-controls">
+                    <label for="timelineZoom">Timeline Zoom</label>
+                    <div class="zoom-buttons">
+                        <button id="zoomOut" aria-label="Zoom out">−</button>
+                        <input type="range" id="timelineZoom" min="8" max="120" step="2" value="30">
+                        <button id="zoomIn" aria-label="Zoom in">+</button>
+                    </div>
+                </div>
+                <div class="snap-controls">
+                    <label>Snap to Grid</label>
+                    <div class="snap-toggle">
+                        <input type="checkbox" id="snapToggle" checked>
+                        <span>Enabled</span>
+                    </div>
+                    <div class="snap-size">
+                        <label for="snapSize">Grid (s)</label>
+                        <input type="number" id="snapSize" min="0.1" step="0.1" value="0.5">
+                    </div>
+                </div>
+                <div class="range-controls">
+                    <label>Project Range</label>
+                    <div class="range-inputs">
+                        <div class="range-field">
+                            <span>Start</span>
+                            <input type="number" id="projectStartInput" min="0" step="0.1" value="0">
+                        </div>
+                        <div class="range-field">
+                            <span>End</span>
+                            <input type="number" id="projectEndInput" min="0" step="0.1" value="30">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ruler-container">
+                <canvas id="rulerCanvas"></canvas>
+            </div>
         <div class="tracks-scroll" id="timelineScroll">
             <!-- PLAYHEAD -->
             <div id="playhead"></div>
-            
+
             <!-- NEW: END MARKER -->
             <div id="endMarker" title="Drag to set project end time"></div>
+
+            <!-- NEW: START MARKER -->
+            <div id="startMarker" title="Drag to set project start time"></div>
 
             <div id="tracksContainer"></div>
         </div>
